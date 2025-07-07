@@ -80,11 +80,22 @@ def export_onnx(pytorch_weights_path=Path(__file__).resolve().parent / "weights/
     except Exception as e:
         print(f"An error occurred: {e}")
 
-def create_loss():
-    torch_weights_path = Path(__file__).resolve().parent / "weights/yolov5s-visdrone.pt"
-    model = torch.load(torch_weights_path, map_location='cpu')["model"]
-    compute_loss = ComputeLoss(model)  # create loss calculator
-    return compute_loss
+class Yolov5LossHolder:
+    def __init__(self):
+        self.compute_loss = None
+
+    def create_loss(self, torch_weights_path, use_mounted_dir=True):
+        if not use_mounted_dir or torch_weights_path is None:
+            torch_weights_path = Path(__file__).resolve().parent / "weights/yolov5s-visdrone.pt"
+        model = torch.load(torch_weights_path, map_location='cpu')["model"]
+        self.compute_loss = ComputeLoss(model)  # create loss calculator
+
+    def get_loss(self):
+        if self.compute_loss is None:
+            raise RuntimeError("Trying to get non-initialized loss")
+        else:
+            return self.compute_loss
+
 
 def compute_iou(gt_bbox, preds_bbox):
     iou_mat = box_iou(gt_bbox, preds_bbox)

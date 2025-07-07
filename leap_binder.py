@@ -1,3 +1,4 @@
+import os.path
 import cv2
 import torch
 import numpy as np
@@ -19,9 +20,9 @@ from code_loader.inner_leap_binder.leapbinder_decorators import (
     tensorleap_preprocess, tensorleap_gt_encoder, tensorleap_input_encoder, tensorleap_custom_metric,
     tensorleap_metadata, tensorleap_custom_loss, tensorleap_custom_visualizer
 )
-from leap_utils import create_loss, compute_iou, compute_accuracy
+from leap_utils import Yolov5LossHolder, compute_iou, compute_accuracy
 
-compute_loss = create_loss()
+yolov5_loss_holder = Yolov5LossHolder()
 
 # ------------------------------
 # Preprocessing and Encoders
@@ -37,6 +38,7 @@ def preprocess_func_leap() -> List[PreprocessResponse]:
     """
     data_path = Path(__file__).resolve().parent / 'data/VisDrone.yaml'
     data = check_dataset(data_path, autodownload=False)
+    yolov5_loss_holder.create_loss(os.path.join(data["path"], "yolov5s-visdrone.pt"))
 
     imgsz = 1024 # Follow the train protocol
     responses = []
@@ -181,6 +183,7 @@ def yolov5_loss(pred0: np.ndarray, pred1: np.ndarray, pred2: np.ndarray, gt: np.
     Returns:
         np.ndarray: Loss scalar.
     """
+    compute_loss = yolov5_loss_holder.get_loss()
     preds = [torch.from_numpy(pred) for pred in (pred0, pred1, pred2)]
 
     gt = torch.from_numpy(gt).squeeze(0)
