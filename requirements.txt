@@ -16,3 +16,6 @@ ultralytics==8.1.47
 tensorflow==2.15.0
 opencv-python==4.11.0.86
 typing-extensions==4.6.0
+onnx==1.17.0
+onnxruntime==1.19.2
+code-loader
