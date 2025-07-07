@@ -47,7 +47,7 @@ def add_noop_permute_to_outputs(onnx_path_in, onnx_path_out=None):
         new_outputs.append(new_output)
 
     # Replace original outputs with permuted outputs
-    graph.output.clear()
+    del graph.output[:]
     graph.output.extend(new_outputs)
 
     # Add Transpose nodes to the graph
