@@ -146,8 +146,8 @@ def sample_metadata(idx: int, preprocessing: PreprocessResponse) -> dict:
         "# of unique objects": len(unique_classes),
         "bbox area mean": float(bbox_areas.mean()),
         "bbox area median": float(np.median(bbox_areas)),
-        "bbox area min": float(bbox_areas.min()),
-        "bbox area max": float(bbox_areas.max()),
+        "bbox area min": float(bbox_areas.min() if len(bbox_areas) > 0 else np.nan),
+        "bbox area max": float(bbox_areas.max() if len(bbox_areas) > 0 else np.nan),
         "bbox area var": float(bbox_areas.var()),
     })
     return metadata_dict
