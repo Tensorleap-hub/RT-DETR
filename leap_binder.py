@@ -91,16 +91,28 @@ def gt_encoder(idx: int, preprocessing: PreprocessResponse) -> np.ndarray:
         if not is_selected:
             continue
         labels = preprocessing.data.labels[i] # shape: [N, 5] (label, x, y, w, h)
-        original_w, original_h = preprocessing.data.shapes[i]
-        new_h = original_h*img_size/original_w
-        pad_size = img_size - new_h
 
         cls = np.expand_dims(labels[:,0], axis=1)
-        x = np.expand_dims(labels[:,1], axis=1) # x_center stays the same
-        y = np.expand_dims(labels[:,2], axis=1) * new_h + pad_size / 2
-        y /= img_size
+        x = np.expand_dims(labels[:,1], axis=1)
+        y = np.expand_dims(labels[:,2], axis=1)
         w = np.expand_dims(labels[:, 3], axis=1)
-        h = np.expand_dims(labels[:,4], axis=1) * new_h / img_size # scale height
+        h = np.expand_dims(labels[:,4], axis=1)
+
+        if not preprocessing.data.rect:
+            # Get the original width and height of the image at index i
+            original_w, original_h = preprocessing.data.shapes[i]
+            # Calculate the new image height after resizing the width to img_size
+            new_h = original_h * img_size / original_w
+            # Compute the padding size required to make the final image square (only vertical padding is considered)
+            pad_size = img_size - new_h
+
+            assert original_w >= original_h, "Only horizontal images are currently supported when dataloader's rect is False, since padding is assumed to be vertical only"
+
+            # Adjust the vertical coordinate y to account for resizing and vertical padding
+            y = y * new_h + pad_size / 2 # scale y to new height and add half of the total vertical padding
+            y = y / img_size             # normalize y to the range [0, 1]
+            # Scale the height h based on the resized image height and normalize it
+            h = h * new_h / img_size
 
         adjusted = np.concatenate([cls, x, y, w, h], axis=1)
         labels_arr.append(adjusted)
