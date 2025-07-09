@@ -1,28 +1,29 @@
-import os.path
 import cv2
 import torch
+import textwrap
 import numpy as np
 from config import cfg
 from typing import List
-from pathlib import Path
 
+from utils.loss import ComputeLoss
+from utils.metrics import box_iou
 from code_loader import leap_binder
 from utils.dataloaders import create_dataloader
 from utils.general import check_dataset, colorstr
-from leap_utils import compute_precision_recall_f1
+from leap_utils import compute_precision_recall_f1_fp_tp_fn
 from code_loader.contract.responsedataclasses import BoundingBox
 from code_loader.visualizers.default_visualizers import LeapImage
 from utils.general import non_max_suppression, xyxy2xywh, xywh2xyxy
-from code_loader.contract.enums import LeapDataType, MetricDirection
+from code_loader.contract.enums import LeapDataType, MetricDirection, ConfusionMatrixValue
 from code_loader.contract.visualizer_classes import LeapImageWithBBox
-from code_loader.contract.datasetclasses import PreprocessResponse, SamplePreprocessResponse
+from code_loader.contract.datasetclasses import PreprocessResponse, SamplePreprocessResponse, ConfusionMatrixElement
 from code_loader.inner_leap_binder.leapbinder_decorators import (
     tensorleap_preprocess, tensorleap_gt_encoder, tensorleap_input_encoder, tensorleap_custom_metric,
     tensorleap_metadata, tensorleap_custom_loss, tensorleap_custom_visualizer
 )
-from leap_utils import Yolov5LossHolder, compute_iou, compute_accuracy
+from leap_utils import load_model, compute_iou, compute_accuracy
+from leap_config import CONFIG, DATA_CONFIG, abs_path_from_root
 
-yolov5_loss_holder = Yolov5LossHolder()
 
 # ------------------------------
 # Preprocessing and Encoders
@@ -36,16 +37,14 @@ def preprocess_func_leap() -> List[PreprocessResponse]:
     Returns:
         List[PreprocessResponse]: List of datasets prepared for further processing.
     """
-    data_path = Path(__file__).resolve().parent / 'data/VisDrone.yaml'
-    data = check_dataset(data_path, autodownload=False)
-    yolov5_loss_holder.create_loss(os.path.join(data["path"], "yolov5s-visdrone.pt"))
+    data_yaml_path = abs_path_from_root(CONFIG["data_yaml_path"])
+    data = check_dataset(data_yaml_path, autodownload=False)
 
-    imgsz = 1024 # Follow the train protocol
     responses = []
     for split in ['train', 'val', 'test']:
         _, dataset = create_dataloader(
                 data[split],
-                imgsz,
+                imgsz = CONFIG["image_size"],
                 batch_size=1,
                 stride=32,
                 single_cls=False,
@@ -55,7 +54,9 @@ def preprocess_func_leap() -> List[PreprocessResponse]:
                 shuffle=False,
             )
 
-        responses.append(PreprocessResponse(data=dataset, length=(len(dataset))))
+        # Changed by KTH
+        #responses.append(PreprocessResponse(data=dataset, length=(len(dataset))))
+        responses.append(PreprocessResponse(data=dataset, length=100))
     return responses
 
 @tensorleap_input_encoder('image', channel_dim=1)
@@ -169,28 +170,41 @@ def sample_metadata(idx: int, preprocessing: PreprocessResponse) -> dict:
 # ------------------------------
 # Custom Loss
 # ------------------------------
+def yolov5_loss_factory(num_scales):
+    # Build predictions list
+    preds_list = ', '.join([f'pred{i}' for i in range(num_scales)])
+    all_args = f'{preds_list}, gt, demo_pred'
 
-@tensorleap_custom_loss("yolov5_loss")
-def yolov5_loss(pred0: np.ndarray, pred1: np.ndarray, pred2: np.ndarray, gt: np.ndarray, demo_pred: np.ndarray):
-    """
-    Computes YOLOv5-style object detection loss.
+    # Dynamically generate function code
+    fn_code = f'''
+    @tensorleap_custom_loss("yolov5_loss")
+    def yolov5_loss({all_args}):
+        preds = [torch.from_numpy(p) for p in [{preds_list}]]
+        gt_torch = torch.from_numpy(gt).squeeze(0)
+        gt_torch = torch.cat([torch.zeros_like(gt_torch[:, 1]).unsqueeze(1), gt_torch], dim=1)
+        loss = yolov5_loss_compute(preds, gt_torch)[0]
+        return loss.unsqueeze(0).numpy()
+    '''
+    local_ns = {}
+    exec(textwrap.dedent(fn_code), globals(), local_ns)
+    return local_ns['yolov5_loss']
 
-    Args:
-        pred0, pred1, pred2 (np.ndarray): Prediction tensors for each detection scale.
-        gt (np.ndarray): Ground truth bounding boxes.
-        demo_pred (np.ndarray): Not used in loss computation. Added due to technical Tensorleap reason
-
-    Returns:
-        np.ndarray: Loss scalar.
-    """
-    compute_loss = yolov5_loss_holder.get_loss()
-    preds = [torch.from_numpy(pred) for pred in (pred0, pred1, pred2)]
-
-    gt = torch.from_numpy(gt).squeeze(0)
-    gt = torch.cat([torch.zeros_like(gt[:,1]).unsqueeze(1), gt], dim=1) # Add "batch idx" column for the loss
-    loss = compute_loss(preds, gt)[0] # compute_loss returns a tuple, the full loss is the first item
-    loss = loss.unsqueeze(0) # Add batch dimension
-    return loss.numpy()
+# # new loss for our model
+# @tensorleap_custom_loss("yolov5_new_loss")
+# def yolov5_new_loss(pred0: np.ndarray, pred1: np.ndarray, pred2: np.ndarray, pred3: np.ndarray, gt: np.ndarray, demo_pred: np.ndarray):
+#     """
+#     Computes YOLOv5-style object detection loss.
+#
+#     Args:
+#         pred0, pred1, pred2 (np.ndarray): Prediction tensors for each detection scale.
+#         gt (np.ndarray): Ground truth bounding boxes.
+#         demo_pred (np.ndarray): Not used in loss computation. Added due to technical Tensorleap reason
+#
+#     Returns:
+#         np.ndarray: Loss scalar.
+#     """
+#     loss = np.zeros(pred1.shape[0])
+#     return loss
 
 # ------------------------------
 # Visualizers
@@ -234,7 +248,7 @@ def gt_bb_decoder(image: np.ndarray, bb_gt: np.ndarray) -> LeapImageWithBBox:
             width=bbx[3],
             height=bbx[4],
             confidence=1.,
-            label=cfg["names"][int(bbx[0])] if not np.isnan(bbx[0]) else 'Unknown Class'
+            label=cfg["pred_names"][int(bbx[0])] if not np.isnan(bbx[0]) else 'Unknown Class'
         )
         for bbx in bb_gt.squeeze(0)
     ]
@@ -268,7 +282,7 @@ def bb_decoder(image: np.ndarray, predictions: np.ndarray) -> LeapImageWithBBox:
             width=pred[2]/w,
             height=pred[3]/h,
             confidence=pred[4],
-            label=cfg["names"][int(pred[5])] if not np.isnan(pred[5]) else 'Unknown Class'
+            label=cfg["pred_names"][int(pred[5])] if not np.isnan(pred[5]) else 'Unknown Class'
         )
         for pred in preds
     ]
@@ -278,7 +292,16 @@ def bb_decoder(image: np.ndarray, predictions: np.ndarray) -> LeapImageWithBBox:
 # Custom Metrics
 # ------------------------------
 
-@tensorleap_custom_metric(name="per_sample_metrics", direction=MetricDirection.Upward)
+@tensorleap_custom_metric(name="per_sample_metrics", direction={
+            "precision": MetricDirection.Upward,
+            "recall": MetricDirection.Upward,
+            "f1": MetricDirection.Upward,
+            "FP": MetricDirection.Downward,
+            "TP": MetricDirection.Upward,
+            "FN": MetricDirection.Downward,
+            "iou": MetricDirection.Upward,
+            "accuracy": MetricDirection.Upward,
+        })
 def get_per_sample_metrics(y_pred: np.ndarray, preprocess: SamplePreprocessResponse):
     """
     Calculates metrics per sample on the model's prediction
@@ -290,11 +313,14 @@ def get_per_sample_metrics(y_pred: np.ndarray, preprocess: SamplePreprocessRespo
     Returns:
         dict: Dictionary with metric values.
     """
-    def _make_metrics(precision, recall, f1, iou, accuracy):
+    def _make_metrics(precision, recall, f1, fp, tp, fn, iou, accuracy):
         return {
             "precision": np.array([precision], dtype=np.float32),
             "recall": np.array([recall], dtype=np.float32),
             "f1": np.array([f1], dtype=np.float32),
+            "FP": np.array([fp], dtype=np.int32),
+            "TP": np.array([tp], dtype=np.int32),
+            "FN": np.array([fn], dtype=np.int32),
             "iou": np.array([iou], dtype=np.float32),
             "accuracy": np.array([accuracy], dtype=np.float32),
         }
@@ -304,13 +330,13 @@ def get_per_sample_metrics(y_pred: np.ndarray, preprocess: SamplePreprocessRespo
     preds = non_max_suppression(torch.from_numpy(y_pred))[0]
 
     if gt.shape[0] == 0 and preds.shape[0] == 0:
-        return _make_metrics(1, 0, 0, 1, 1) # Edge case: no objects, assume perfect
+        return _make_metrics(1, 0, 0, 0, 0, 0, 1, 1) # Edge case: no objects, assume perfect
 
     if preds.shape[0] == 0:
-        return _make_metrics(0, 0, 0, 0, 0)  # No predictions at all
+        return _make_metrics(0, 0, 0, 0, 0, 0, 0, 0)  # No predictions at all
 
     if gt.shape[0] == 0:
-        return _make_metrics(0, 0, 0, 0, 0) # No GT but has predictions
+        return _make_metrics(0, 0, 0, 0, 0, 0, 0, 0) # No GT but has predictions
 
     preds_boxes = preds[:, :4] / dataloader.img_size # normalize to be [0,1]
     preds_labels = preds[:, 5]
@@ -318,35 +344,88 @@ def get_per_sample_metrics(y_pred: np.ndarray, preprocess: SamplePreprocessRespo
     gt_boxes = xywh2xyxy(gt[:, 2:])
     gt_labels = gt[:, 1]
 
-    p, r, f1 = compute_precision_recall_f1(gt_boxes, preds_boxes, iou_threshold=0.5)
+    p, r, f1, FP, TP, FN = compute_precision_recall_f1_fp_tp_fn(gt_boxes, preds_boxes, iou_threshold=0.5)
     iou = compute_iou(gt_boxes, preds_boxes)
     acc = compute_accuracy(gt_boxes, gt_labels, preds_boxes, preds_labels)
 
-    return _make_metrics(float(p), float(r), float(f1), float(iou), float(acc))
+    return _make_metrics(float(p), float(r), float(f1), int(FP), int(TP), int(FN), float(iou), float(acc))
+
+@tensorleap_custom_metric('Confusion Matrix')
+def confusion_matrix_metric(y_pred: np.ndarray, preprocess: SamplePreprocessResponse):
+    threshold=0.5
+    confusion_matrix_elements = []
+    dataloader = preprocess.preprocess_response.data
+    gt = dataloader[int(preprocess.sample_ids)][1]  # shape: [N, 6] (_,label,x,y,w,h)
+    gt_bbox = xywh2xyxy(gt[:, 2:])
+    gt_labels = gt[:, 1]
+    preds = non_max_suppression(torch.from_numpy(y_pred))[0]
+    preds_boxes = preds[:, :4] / dataloader.img_size  # normalize to be [0,1]
+
+    if len(preds)!=0:
+        ious = box_iou(gt_bbox, preds_boxes).numpy().T
+        prediction_detected = np.any((ious > threshold), axis=1)
+        max_iou_ind = np.argmax(ious, axis=1)
+        for i, prediction in enumerate(prediction_detected):
+            gt_idx = int(gt_labels[max_iou_ind[i]])
+            class_name = DATA_CONFIG["pred_names"][gt_idx]
+            gt_label = f"{class_name}"
+            confidence = preds[i, 4]
+            if prediction:  # TP
+                confusion_matrix_elements.append(ConfusionMatrixElement(
+                    str(gt_label),
+                    ConfusionMatrixValue.Positive,
+                    float(confidence)
+                ))
+            else:  # FP
+                class_name = DATA_CONFIG["pred_names"][int(preds[i,5])]
+                pred_label = f"{class_name}"
+                confusion_matrix_elements.append(ConfusionMatrixElement(
+                    str(pred_label),
+                    ConfusionMatrixValue.Negative,
+                    float(confidence)
+                ))
+    else:  # No prediction
+        ious = np.zeros((1, gt_labels.shape[0]))
+    gts_detected = np.any((ious > threshold), axis=0)
+    for k, gt_detection in enumerate(gts_detected):
+        label_idx = gt_labels[k]
+        if not gt_detection : # FN
+            class_name = DATA_CONFIG["pred_names"][int(label_idx)]
+            confusion_matrix_elements.append(ConfusionMatrixElement(
+                f"{class_name}",
+                ConfusionMatrixValue.Positive,
+                float(0)
+            ))
+    if all(~ gts_detected):
+        confusion_matrix_elements.append(ConfusionMatrixElement(
+            "background",
+            ConfusionMatrixValue.Positive,
+            float(0)
+        ))
+    return [confusion_matrix_elements]
 
 # ------------------------------
 # Prediction Binding
 # ------------------------------
 # The model outputs a list of 4 tensors:
 # 1. Processed object detection results for visualization
-# 2. 3 raw prediction outputs used for computing loss
+# 2. N raw prediction outputs used for computing loss
 
 # Bind the object detection output for visualization/interpretation
-# - This tensor contains bounding box predictions after NMS
+# - This tensor contains bounding box predictions before NMS
 # - Shape: (Batch, Prediction scores, Num_BBoxes)
 # - Prediction scores contain the following scores:
 #   ["x", "y", "w", "h", "obj_conf"] + class names from cfg["names"]
 # - 'channel_dim=1' indicates that the prediction scores are arranged along dimension 1
 leap_binder.add_prediction(
     name='object detection',
-    labels=["x", "y", "w", "h", "obj_conf"] + cfg["names"],
-    channel_dim=1
+    labels=["x", "y", "w", "h", "obj_conf"] + cfg["pred_names"],
+    channel_dim=-1
 )
 
-# Bind intermediate feature outputs for analysis or debugging.
-leap_binder.add_prediction(name='concatenate_128', labels=[str(i) for i in range(128)], channel_dim=2)
-leap_binder.add_prediction(name='concatenate_64', labels=[str(i) for i in range(64)], channel_dim=2)
-leap_binder.add_prediction(name='concatenate_32', labels=[str(i) for i in range(32)], channel_dim=2)
+torch_model = load_model(CONFIG["torch_model_weights_name"])
+yolov5_loss_compute = ComputeLoss(torch_model)
+yolov5_loss = yolov5_loss_factory(yolov5_loss_compute.nl)
 
 if __name__ == '__main__':
     leap_binder.check()
