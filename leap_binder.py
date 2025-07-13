@@ -361,7 +361,7 @@ def confusion_matrix_metric(y_pred: np.ndarray, preprocess: SamplePreprocessResp
     preds = non_max_suppression(torch.from_numpy(y_pred))[0]
     preds_boxes = preds[:, :4] / dataloader.img_size  # normalize to be [0,1]
 
-    if len(preds)!=0:
+    if preds.shape[0] != 0 and gt_bbox.shape[0] != 0:
         ious = box_iou(gt_bbox, preds_boxes).numpy().T
         prediction_detected = np.any((ious > threshold), axis=1)
         max_iou_ind = np.argmax(ious, axis=1)
