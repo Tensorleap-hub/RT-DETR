@@ -45,8 +45,8 @@ def check_custom_test():
             main_pred = preds[0]
             d_loss=yolov5_loss(*anchor_preds, gt_input, main_pred)
             metadata = sample_metadata(idx, subset)
-            metrics = get_per_sample_metrics(main_pred, SamplePreprocessResponse(np.array(idx), subset))
-            confusion_matrix = confusion_matrix_metric(main_pred, SamplePreprocessResponse(np.array(idx), subset))
+            metrics = get_per_sample_metrics(main_pred, gt_input)
+            confusion_matrix = confusion_matrix_metric(main_pred, gt_input)
     print("finish tests")
 
 if __name__ == '__main__':
