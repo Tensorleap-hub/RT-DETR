@@ -367,10 +367,10 @@ def get_per_sample_metrics(y_preds: np.ndarray, targets: np.ndarray):
             _update_metrics(metrics,1, 0, 0, 0, 0, 0, 1, 1) # Edge case: no objects, assume perfect
 
         if pred.shape[0] == 0:
-            return _update_metrics(metrics, 0, 0, 0, 0, 0, 0, 0, 0)  # No predictions at all
+            return _update_metrics(metrics, 0, 0, 0, 0, 0, gt.shape[0], 0, 0)  # No predictions at all
 
         if gt.shape[0] == 0:
-            return _update_metrics(metrics, 0, 0, 0, 0, 0, 0, 0, 0) # No GT but has predictions
+            return _update_metrics(metrics, 0, 0, 0, pred.shape[0], 0, 0, 0, 0) # No GT but has predictions
 
         pred_boxes = pred[:, :4] / CONFIG["image_size"] # normalize to be [0,1]
         pred_labels = pred[:, 5]
