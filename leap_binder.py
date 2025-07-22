@@ -55,8 +55,8 @@ def preprocess_func_leap() -> List[PreprocessResponse]:
             )
 
         # Changed by KTH
-        #responses.append(PreprocessResponse(data=dataset, length=(len(dataset))))
-        responses.append(PreprocessResponse(data=dataset, length=100))
+        responses.append(PreprocessResponse(data=dataset, length=(len(dataset))))
+        #responses.append(PreprocessResponse(data=dataset, length=100))
     return responses
 
 @tensorleap_input_encoder('image', channel_dim=1)
@@ -140,6 +140,24 @@ def gt_encoder(idx: int, preprocessing: PreprocessResponse) -> np.ndarray:
 # ------------------------------
 # Metadata
 # ------------------------------
+def average_dist_nn(boxes: np.array):
+    """
+    Computes the average distance to the nearest neigbour.
+
+    Args:
+        boxes (np.Array): An array of bounding boxes. Coordinates are normalized between 0 and 1.
+
+    Returns:
+        float: Average distance to the nearest neighbour.
+    """
+    if len(boxes) < 2:
+        return 1.0
+    data = boxes[:,:2]
+    distance_matrix = np.full((len(data), len(data)), np.inf)
+    for i in range(len(data)):
+        for j in range(i+1,len(data)):
+            distance_matrix[i, j] = np.linalg.norm(data[i]-data[j])
+    return float(np.mean(np.min(distance_matrix[:, 1:], axis=0)))
 
 @tensorleap_metadata('metadata')
 def sample_metadata(idx: int, preprocessing: PreprocessResponse) -> dict:
@@ -161,24 +179,48 @@ def sample_metadata(idx: int, preprocessing: PreprocessResponse) -> dict:
         gt_class = gt[:, 1]
         gt_bbox = gt[:,2:]
         bbox_areas = gt_bbox[:,2]*gt_bbox[:,3]
+        bbox_cx = gt_bbox[:, 0]
+        bbox_cy = gt_bbox[: 1]
+        #nn_dist_mean = average_dist_nn(gt_bbox)
     else:
-        gt_class, bbox_areas = np.array([]), np.array([])
+        gt_class, bbox_areas, bbox_cx, bbox_cy = np.array([]), np.array([]), np.array([]), np.array([])
 
-    unique_classes, counts = np.unique(gt_class, return_counts=True)
-
+    # KTH Added
+    help_classes = np.array([0,1])
+    
+    unique_classes, c = np.unique(gt_class, return_counts=True)
+    counts = np.zeros(len(help_classes), dtype=int)
+    idx = np.in1d(help_classes, unique_classes)
+    counts[idx] = c
+    
     metadata_dict = {}
 
+    # Zach Added
     laplacian = cv2.Laplacian(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), cv2.CV_64F) # Compute Laplacian variance
     sharpness = laplacian.var()
     metadata_dict.update({
         "image_sharpness": float(sharpness),
         "# of objects": gt.shape[0],
         "# of unique objects": len(unique_classes),
+        "# of drones": counts[0],
+        "# of birds": counts[1],
         "bbox area mean": float(bbox_areas.mean()),
         "bbox area median": float(np.median(bbox_areas)),
         "bbox area min": float(bbox_areas.min() if len(bbox_areas) > 0 else np.nan),
         "bbox area max": float(bbox_areas.max() if len(bbox_areas) > 0 else np.nan),
         "bbox area var": float(bbox_areas.var()),
+        "bbox cx mean": float(bbox_cx.mean()),
+        "bbox cx median": float(np.median(bbox_cx)),
+        "bbox cx min": float(bbox_cx.min() if len(bbox_cx) > 0 else np.nan),
+        "bbox cx max": float(bbox_cx.max() if len(bbox_cx) > 0 else np.nan),
+        "bbox cx var": float(bbox_cx.var()),
+        "bbox cy mean": float(bbox_cy.mean()),
+        "bbox cy median": float(np.median(bbox_cy)),
+        "bbox cy min": float(bbox_cy.min() if len(bbox_cy) > 0 else np.nan),
+        "bbox cy max": float(bbox_cy.max() if len(bbox_cy) > 0 else np.nan),
+        "bbox cy var": float(bbox_cy.var()),
+        "bbox center var": float(bbox_cy.var()) + float(bbox_cx.var()), # a measure for object density
+        #"average distance to NN": nn_dist_mean, # a measure for object density
     })
     return metadata_dict
 
@@ -224,6 +266,24 @@ def yolov5_loss_factory(num_scales):
 #     """
 #     loss = np.zeros(pred1.shape[0])
 #     return loss
+
+# new loss for our model
+@tensorleap_custom_loss("yolov5_new_loss")
+def yolov5_new_loss(pred0: np.ndarray, pred1: np.ndarray, pred2: np.ndarray, pred3: np.ndarray, gt: np.ndarray, demo_pred: np.ndarray):
+    """
+    Computes YOLOv5-style object detection loss.
+
+    Args:
+        pred0, pred1, pred2 (np.ndarray): Prediction tensors for each detection scale.
+        gt (np.ndarray): Ground truth bounding boxes.
+        demo_pred (np.ndarray): Not used in loss computation. Added due to technical Tensorleap reason
+
+    Returns:
+        np.ndarray: Loss scalar.
+    """
+    loss = np.zeros(pred1.shape[0])
+    return loss
+
 
 # ------------------------------
 # Visualizers

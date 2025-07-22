@@ -10,6 +10,7 @@ import matplotlib
 
 matplotlib.use('TkAgg')
 
+matplotlib.use('TkAgg')
 
 def check_custom_test():
     check_generic = False

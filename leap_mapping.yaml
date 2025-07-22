@@ -3,92 +3,68 @@ decorators:
     data:
       type: Input
       output_name: image
-    id: '141'
+    id: '182'
     inputs: {}
     outputs:
       image:
         - inputKey: input
           operation: ZeroPadding2D
           name: model.0/conv/Conv_tl_conv_pad_1
-          id: '140'
+          id: '181'
         - inputKey: image
           operation: Visualizer
-          id: '1110'
+          id: '1387'
         - inputKey: image
           operation: Visualizer
-          id: '1111'
-        - inputKey: image
-          operation: Visualizer
-          id: '1112'
-  - operation: CustomLoss
+          id: '1389'
+  - operation: Visualizer
     data:
-      type: CustomLoss
-      name: yolov5_loss
-      selected: yolov5_loss
-      user_unique_name: yolov5_loss
+      type: Visualizer
+      name: bb_gt_decoder
+      visualizer_name: bb_gt_decoder
+      visualizer_type: ImageWithBBox
       arg_names:
-        - pred0
-        - pred1
-        - pred2
-        - gt
-        - demo_pred
-    id: '1107'
+        - image
+        - bb_gt
+      user_unique_name: bb_gt_decoder
+    id: '1387'
     inputs:
-      demo_pred:
-        - outputKey: feature_map
-          operation: Permute
-          name: output1_permuted_node_tl_transpose
-          id: '1'
-      pred0:
-        - outputKey: feature_map
-          operation: Permute
-          name: output2_permuted_node_tl_transpose
-          id: '1104'
-      pred1:
-        - outputKey: feature_map
-          operation: Permute
-          name: output3_permuted_node_tl_transpose
-          id: '1105'
-      pred2:
-        - outputKey: feature_map
-          operation: Permute
-          name: output4_permuted_node_tl_transpose
-          id: '1106'
-      gt:
+      image:
+        - outputKey: image
+          operation: Input
+          id: '182'
+      bb_gt:
         - outputKey: classes
           operation: GroundTruth
-          id: '1108'
+          id: '1388'
     outputs: {}
   - operation: GroundTruth
     data:
       type: GroundTruth
       output_name: classes
       selected: classes
-    id: '1108'
+    id: '1388'
     inputs: {}
     outputs:
       classes:
-        - inputKey: gt
-          operation: CustomLoss
-          id: '1107'
         - inputKey: bb_gt
           operation: Visualizer
-          id: '1111'
-  - operation: Metric
+          id: '1387'
+  - operation: Visualizer
     data:
-      type: Metric
-      name: per_sample_metrics
-      metric_name: per_sample_metrics
+      type: Visualizer
+      name: image_visualizer
+      visualizer_name: image_visualizer
+      visualizer_type: Image
       arg_names:
-        - y_pred
-      user_unique_name: per_sample_metrics
-    id: '1109'
+        - image
+      user_unique_name: image_visualizer
+    id: '1389'
     inputs:
-      y_pred:
-        - outputKey: feature_map
-          operation: Permute
-          name: output1_permuted_node_tl_transpose
-          id: '1'
+      image:
+        - outputKey: image
+          operation: Input
+          id: '182'
     outputs: {}
   - operation: Visualizer
     data:
@@ -100,7 +76,7 @@ decorators:
         - image
         - predictions
       user_unique_name: bb_decoder
-    id: '1110'
+    id: '1390'
     inputs:
       predictions:
         - outputKey: feature_map
@@ -110,43 +86,92 @@ decorators:
       image:
         - outputKey: image
           operation: Input
-          id: '141'
+          id: '1391'
     outputs: {}
-  - operation: Visualizer
+  - operation: Input
     data:
-      type: Visualizer
-      name: bb_gt_decoder
-      visualizer_name: bb_gt_decoder
-      visualizer_type: ImageWithBBox
-      arg_names:
-        - image
-        - bb_gt
-      user_unique_name: bb_gt_decoder
-    id: '1111'
-    inputs:
+      type: Input
+      output_name: image
+      selected: image
+    id: '1391'
+    inputs: {}
+    outputs:
       image:
-        - outputKey: image
-          operation: Input
-          id: '141'
-      bb_gt:
+        - inputKey: image
+          operation: Visualizer
+          id: '1390'
+  - operation: Metric
+    data:
+      type: Metric
+      name: per_sample_metrics
+      metric_name: per_sample_metrics
+      arg_names:
+        - y_pred
+      user_unique_name: per_sample_metrics
+    id: '1392'
+    inputs:
+      y_pred:
+        - outputKey: feature_map
+          operation: Permute
+          name: output1_permuted_node_tl_transpose
+          id: '1'
+    outputs: {}
+  - operation: CustomLoss
+    data:
+      arg_names:
+        - pred0
+        - pred1
+        - pred2
+        - pred3
+        - gt
+        - demo_pred
+      user_unique_name: yolov5_new_loss
+      name: yolov5_new_loss
+      selected: yolov5_new_loss
+      type: CustomLoss
+    id: '1393'
+    inputs:
+      demo_pred:
+        - outputKey: feature_map
+          operation: Permute
+          name: output1_permuted_node_tl_transpose
+          id: '1'
+      pred0:
+        - outputKey: feature_map
+          operation: Permute
+          name: output2_permuted_node_tl_transpose
+          id: '1383'
+      pred1:
+        - outputKey: feature_map
+          operation: Permute
+          name: output3_permuted_node_tl_transpose
+          id: '1384'
+      pred2:
+        - outputKey: feature_map
+          operation: Permute
+          name: output4_permuted_node_tl_transpose
+          id: '1385'
+      pred3:
+        - outputKey: feature_map
+          operation: Permute
+          name: onnx__Sigmoid_1604_permuted_node_tl_transpose
+          id: '1386'
+      gt:
         - outputKey: classes
           operation: GroundTruth
-          id: '1108'
+          id: '1394'
     outputs: {}
-  - operation: Visualizer
+  - operation: GroundTruth
     data:
-      type: Visualizer
-      name: image_visualizer
-      visualizer_name: image_visualizer
-      visualizer_type: Image
-      arg_names:
-        - image
-      user_unique_name: image_visualizer
-    id: '1112'
-    inputs:
-      image:
-        - outputKey: image
-          operation: Input
-          id: '141'
-    outputs: {}
+      type: GroundTruth
+      output_name: classes
+      selected: classes
+    id: '1394'
+    inputs: {}
+    outputs:
+      classes:
+        - inputKey: gt
+          operation: CustomLoss
+          id: '1393'
 layers: []
+
