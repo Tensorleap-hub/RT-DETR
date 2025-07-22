@@ -335,14 +335,14 @@ def get_per_sample_metrics(y_preds: np.ndarray, targets: np.ndarray):
 
     def _update_metrics(metrics, precision, recall, f1, fp, tp, fn, iou, accuracy):
 
-        metrics["precision"] = np.concatenate([metrics["precision"], np.array([precision])])
-        metrics["recall"] = np.concatenate([metrics["recall"], np.array([recall])])
-        metrics["f1"] = np.concatenate([metrics["f1"], np.array([f1])])
-        metrics["FP"] = np.concatenate([metrics["FP"], np.array([fp])])
-        metrics["TP"] = np.concatenate([metrics["TP"], np.array([tp])])
-        metrics["FN"] = np.concatenate([metrics["FN"], np.array([fn])])
-        metrics["iou"] = np.concatenate([metrics["iou"], np.array([iou])])
-        metrics["accuracy"] = np.concatenate([metrics["accuracy"], np.array([accuracy])])
+        metrics["precision"] = np.concatenate([metrics["precision"], np.array([precision], dtype=np.float32)])
+        metrics["recall"] = np.concatenate([metrics["recall"], np.array([recall], dtype=np.float32)])
+        metrics["f1"] = np.concatenate([metrics["f1"], np.array([f1], dtype=np.float32)])
+        metrics["FP"] = np.concatenate([metrics["FP"], np.array([fp], dtype=np.int32)])
+        metrics["TP"] = np.concatenate([metrics["TP"], np.array([tp], dtype=np.int32)])
+        metrics["FN"] = np.concatenate([metrics["FN"], np.array([fn], dtype=np.int32)])
+        metrics["iou"] = np.concatenate([metrics["iou"], np.array([iou], dtype=np.float32)])
+        metrics["accuracy"] = np.concatenate([metrics["accuracy"], np.array([accuracy], dtype=np.float32)])
 
     metrics = {
             "precision": np.array([], dtype=np.float32),
@@ -364,13 +364,16 @@ def get_per_sample_metrics(y_preds: np.ndarray, targets: np.ndarray):
 
 
         if gt.shape[0] == 0 and pred.shape[0] == 0:
-            _update_metrics(metrics,1, 0, 0, 0, 0, 0, 1, 1) # Edge case: no objects, assume perfect
+            _update_metrics(metrics,np.nan, np.nan, 0, 0, 0, 0, 1, 1) # Edge case: no objects, assume perfect
+            continue
 
         if pred.shape[0] == 0:
-            return _update_metrics(metrics, 0, 0, 0, 0, 0, gt.shape[0], 0, 0)  # No predictions at all
+            _update_metrics(metrics, np.nan, 0, 0, 0, 0, gt.shape[0], 0, 0)  # No predictions at all
+            continue
 
         if gt.shape[0] == 0:
-            return _update_metrics(metrics, 0, 0, 0, pred.shape[0], 0, 0, 0, 0) # No GT but has predictions
+            _update_metrics(metrics, 0, np.nan, 0, pred.shape[0], 0, 0, 0, 0) # No GT but has predictions
+            continue
 
         pred_boxes = pred[:, :4] / CONFIG["image_size"] # normalize to be [0,1]
         pred_labels = pred[:, 5]
