@@ -105,17 +105,23 @@ def gt_encoder(idx: int, preprocessing: PreprocessResponse) -> np.ndarray:
             # Get the original width and height of the image at index i
             original_w, original_h = preprocessing.data.shapes[i]
             # Calculate the new image height after resizing the width to img_size
-            new_h = original_h * img_size / original_w
-            # Compute the padding size required to make the final image square (only vertical padding is considered)
-            pad_size = img_size - new_h
-
-            assert original_w >= original_h, "Only horizontal images are currently supported when dataloader's rect is False, since padding is assumed to be vertical only"
-
-            # Adjust the vertical coordinate y to account for resizing and vertical padding
-            y = y * new_h + pad_size / 2 # scale y to new height and add half of the total vertical padding
-            y = y / img_size             # normalize y to the range [0, 1]
-            # Scale the height h based on the resized image height and normalize it
-            h = h * new_h / img_size
+            if original_w > original_h:
+                new_h = original_h * img_size / original_w
+                # Compute the padding size required to make the final image square (only vertical padding is considered)
+                pad_size = img_size - new_h
+                # Adjust the vertical coordinate y to account for resizing and vertical padding
+                y = y * new_h + pad_size / 2 # scale y to new height and add half of the total vertical padding
+                y = y / img_size             # normalize y to the range [0, 1]
+                # Scale the height h based on the resized image height and normalize it
+                h = h * new_h / img_size
+            else:
+                new_w = original_w * img_size / original_h
+                pad_size = img_size - new_w
+                # Adjust the horizontal coordinate x to account for resizing and horizontal padding
+                x = x * new_w + pad_size / 2 # scale x to new height and add half of the total horizontal padding
+                x = x / img_size # normalize x to the range [0, 1]
+                # Scale the width w based on the resized image height and normalize it
+                w = w * new_w / img_size
 
         adjusted = np.concatenate([cls, x, y, w, h], axis=1)
 
