@@ -1,16 +1,16 @@
 codeIntegrationId: 686b80e4a563bcc1856a9522
 projectId: 686b80d7a563bcc1856a951c
 secretId: ""
-entryFile: leap_binder.py
+entryFile: leap_integration.py
 include:
+    - leap_integration.py
     - leap_binder.py
     - leap_utils.py
     - config.py
     - leap_config.py
     - leap_config.yaml
     - requirements.txt
-    - leap_mapping.yaml
-    - data/VisDrone.yaml
+    - data/coco128.yaml
     - models/*.py
     - utils/*.py
     - utils/**/*.py

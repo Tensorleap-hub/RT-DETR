@@ -2,7 +2,6 @@ import cv2
 import torch
 import textwrap
 import numpy as np
-from config import cfg
 from typing import List
 
 from utils.loss import ComputeLoss
@@ -41,7 +40,10 @@ def preprocess_func_leap() -> List[PreprocessResponse]:
     data = check_dataset(data_yaml_path, autodownload=False)
 
     responses = []
-    for split in ['train', 'val', 'test']:
+    split_order = [split for split in ["train", "val", "test"] if split in data]
+    if not split_order:
+        raise ValueError(f"No supported splits found in dataset config: {data_yaml_path}")
+    for split in split_order:
         _, dataset = create_dataloader(
                 data[split],
                 imgsz = CONFIG["image_size"],
@@ -135,6 +137,7 @@ def gt_encoder(idx: int, preprocessing: PreprocessResponse) -> np.ndarray:
 
         labels_arr.append(adjusted)
 
+    return np.array(labels_arr,dtype=np.float32).squeeze(0)
     return np.array(labels_arr,dtype=np.float32).squeeze(0)
 
 # ------------------------------
@@ -333,7 +336,7 @@ def gt_bb_decoder(image: np.ndarray, bb_gt: np.ndarray) -> LeapImageWithBBox:
             width=bbx[3],
             height=bbx[4],
             confidence=1.,
-            label=cfg["pred_names"][int(bbx[0])] if not np.isnan(bbx[0]) else 'Unknown Class'
+            label=DATA_CONFIG["pred_names"][int(bbx[0])] if not np.isnan(bbx[0]) else 'Unknown Class'
         )
         for bbx in bb_gt
     ]
@@ -367,7 +370,7 @@ def bb_decoder(image: np.ndarray, predictions: np.ndarray) -> LeapImageWithBBox:
             width=pred[2]/w,
             height=pred[3]/h,
             confidence=pred[4],
-            label=cfg["pred_names"][int(pred[5])] if not np.isnan(pred[5]) else 'Unknown Class'
+            label=DATA_CONFIG["pred_names"][int(pred[5])] if not np.isnan(pred[5]) else 'Unknown Class'
         )
         for pred in preds
     ]
@@ -447,7 +450,7 @@ def get_per_sample_metrics(y_preds: np.ndarray, targets: np.ndarray):
         gt_boxes = xywh2xyxy(gt[:, 1:])
         gt_labels = gt[:, 0]
 
-        p, r, f1, FP, TP, FN = compute_precision_recall_f1_fp_tp_fn(gt_boxes, pred_boxes, iou_threshold=0.5)
+        p, r, f1, FP, TP, FN = compute_precision_recall_f1_fp_tp_fn(gt_boxes, pred_boxes, iou_threshold=0.1)
         iou = compute_iou(gt_boxes, pred_boxes)
         acc = compute_accuracy(gt_boxes, gt_labels, pred_boxes, pred_labels)
         _update_metrics(metrics, float(p), float(r), float(f1), int(FP), int(TP), int(FN), float(iou), float(acc))
@@ -455,7 +458,7 @@ def get_per_sample_metrics(y_preds: np.ndarray, targets: np.ndarray):
 
 @tensorleap_custom_metric('Confusion Matrix')
 def confusion_matrix_metric(y_preds: np.ndarray, targets: np.ndarray):
-    threshold=0.5
+    threshold=0.1
     confusion_matrices = []
     preds = non_max_suppression(torch.from_numpy(y_preds))
     for pred, gt in zip(preds, targets):
@@ -525,11 +528,11 @@ def confusion_matrix_metric(y_preds: np.ndarray, targets: np.ndarray):
 # - This tensor contains bounding box predictions before NMS
 # - Shape: (Batch, Prediction scores, Num_BBoxes)
 # - Prediction scores contain the following scores:
-#   ["x", "y", "w", "h", "obj_conf"] + class names from cfg["names"]
+#   ["x", "y", "w", "h", "obj_conf"] + class names from DATA_CONFIG["pred_names"]
 # - 'channel_dim=1' indicates that the prediction scores are arranged along dimension 1
 leap_binder.add_prediction(
     name='object detection',
-    labels=["x", "y", "w", "h", "obj_conf"] + cfg["pred_names"],
+    labels=["x", "y", "w", "h", "obj_conf"] + DATA_CONFIG["pred_names"],
     channel_dim=-1
 )
 

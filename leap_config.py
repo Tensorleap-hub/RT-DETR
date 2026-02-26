@@ -19,4 +19,8 @@ def load_project_config() -> Dict[str, Any]:
 
 
 CONFIG = load_project_config()
-DATA_CONFIG = load_yaml(CONFIG["data_yaml_path"])
+data_config_path = abs_path_from_root(CONFIG["data_yaml_path"])
+if os.path.exists(data_config_path):
+    DATA_CONFIG = load_yaml(CONFIG["data_yaml_path"])
+else:
+    DATA_CONFIG = {}
