@@ -1,42 +1,43 @@
 import onnxruntime as ort
+import numpy as np
 
 from code_loader.contract.datasetclasses import PredictionTypeHandler
-from code_loader.helpers.visualizer.visualize import visualize
+from code_loader.plot_functions.visualize import visualize
 from code_loader.inner_leap_binder.leapbinder_decorators import (
     tensorleap_integration_test,
     tensorleap_load_model,
 )
 
-from leap_binder import (
-    bb_decoder,
-    confusion_matrix_metric,
-    get_per_sample_metrics,
-    gt_bb_decoder,
-    gt_encoder,
-    image_visualizer,
-    input_encoder,
-    preprocess_func_leap,
-    sample_metadata,
-    yolov5_loss,
-)
+from leap_binder import *
 from leap_config import CONFIG, DATA_CONFIG, abs_path_from_root
 
 
 prediction_type = PredictionTypeHandler(
-    name="object detection",
-    labels=["x", "y", "w", "h", "obj_conf"] + DATA_CONFIG["pred_names"],
+    name="labels",
+    labels=DATA_CONFIG["pred_names"],
+    channel_dim=-1,
+)
+prediction_type1 = PredictionTypeHandler(
+    name="boxes",
+    labels=["x", "y", "w", "h"],
+    channel_dim=-1,
+)
+
+prediction_type2 = PredictionTypeHandler(
+    name="confidence",
+    labels=["obj_conf"],
     channel_dim=-1,
 )
 
 
-@tensorleap_load_model([prediction_type])
+@tensorleap_load_model([prediction_type,prediction_type1,prediction_type2])
 def load_model():
     """
     Load the trained model for inference.
     TODO: Update CONFIG['model_path'] with the real ONNX model path.
     """
     model_path = abs_path_from_root(CONFIG["model_path"])
-    if CONFIG.get("model_type", "onnx") != "onnx":
+    if not model_path.endswith(".onnx"):
         raise ValueError("Only ONNX is supported in this integration file.")
     return ort.InferenceSession(model_path)
 
@@ -47,14 +48,25 @@ def check_integration(idx, subset):
     image = input_encoder(idx, subset)
     gt = gt_encoder(idx, subset)
 
-    input_name = model.get_inputs()[0].name
-    predictions = model.run(None, {input_name: image})
-    main_pred = predictions[0]
-    anchor_preds = predictions[1:]
+    model_inputs = model.get_inputs()
+    if CONFIG['model_type'] == "RTDETR":
+        image_size = input_size_encoder(idx, subset)
+        predictions = model.run(
+            None,
+            {
+                "images": image,
+                "orig_target_sizes": image_size,
+            },
+        )
+        labels, boxes_xyxy, scores = predictions[0], predictions[1], predictions[2]
+    else:
+        input_name = model_inputs[0].name
+        predictions = model.run(None, {input_name: image})
+        main_pred = predictions[0]
 
     vis_image = image_visualizer(image)
     vis_gt = gt_bb_decoder(image, gt)
-    vis_pred = bb_decoder(image, main_pred)
+    vis_pred = bb_decoder(image, labels, boxes_xyxy, scores)
 
     _ = vis_image
     _ = vis_gt
@@ -64,14 +76,8 @@ def check_integration(idx, subset):
         visualize(vis_gt, title="Ground truth boxes")
         visualize(vis_pred, title="Predicted boxes")
 
-    if len(anchor_preds) < 4:
-        raise ValueError(
-            f"Expected at least 5 model outputs (1 main + 4 anchors), got {len(predictions)}."
-        )
-
-    _ = yolov5_loss(anchor_preds[0], anchor_preds[1], anchor_preds[2], anchor_preds[3], gt, main_pred)
-    _ = get_per_sample_metrics(main_pred, gt)
-    _ = confusion_matrix_metric(main_pred, gt)
+    _ = get_per_sample_metrics(labels, boxes_xyxy, scores, gt)
+    _ = confusion_matrix_metric(labels, boxes_xyxy, scores, gt)
     _ = sample_metadata(idx, subset)
 
 

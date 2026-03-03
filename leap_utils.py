@@ -2,7 +2,6 @@ import os
 import torch
 import numpy as np
 from pathlib import Path
-from models.experimental import attempt_load
 from ultralytics.utils.metrics import box_iou
 from leap_config import CONFIG, DATA_CONFIG, abs_path_from_root
 
@@ -59,6 +58,7 @@ def add_noop_permute_to_outputs(onnx_path_in, onnx_path_out=None):
     print(f"Saved model with no-op permute outputs to: {onnx_path_out}")
 
 def export_onnx(pytorch_weights_path=abs_path_from_root("weights/yolov5s-visdrone.pt"), onnx_path=None):
+    from models.experimental import attempt_load
     model = attempt_load(pytorch_weights_path, device='cpu')
     input = torch.rand(1,3,CONFIG["image_size"],CONFIG["image_size"])
     if not onnx_path:
@@ -79,6 +79,7 @@ def export_onnx(pytorch_weights_path=abs_path_from_root("weights/yolov5s-visdron
         print(f"An error occurred: {e}")
 
 def load_model(model_name, use_mounted_dir=True):
+    from models.experimental import attempt_load
     if use_mounted_dir:
         torch_weights_path = os.path.join(DATA_CONFIG["path"], model_name)
     else:

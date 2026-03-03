@@ -4,7 +4,6 @@ import textwrap
 import numpy as np
 from typing import List
 
-from utils.loss import ComputeLoss
 from utils.metrics import box_iou
 from code_loader import leap_binder
 from utils.dataloaders import create_dataloader
@@ -20,8 +19,44 @@ from code_loader.inner_leap_binder.leapbinder_decorators import (
     tensorleap_preprocess, tensorleap_gt_encoder, tensorleap_input_encoder, tensorleap_custom_metric,
     tensorleap_metadata, tensorleap_custom_loss, tensorleap_custom_visualizer
 )
-from leap_utils import load_model, compute_iou, compute_accuracy
+from leap_utils import compute_iou, compute_accuracy
 from leap_config import CONFIG, DATA_CONFIG, abs_path_from_root
+
+def format_rtdetr_predictions(labels: np.ndarray, boxes_xyxy: np.ndarray, scores: np.ndarray) -> np.ndarray:
+    labels = np.asarray(labels).squeeze()
+    boxes_xyxy = np.asarray(boxes_xyxy).squeeze()
+    scores = np.asarray(scores).squeeze()
+
+    if labels.ndim == 0:
+        labels = np.array([labels], dtype=np.float32)
+    if scores.ndim == 0:
+        scores = np.array([scores], dtype=np.float32)
+    if boxes_xyxy.ndim == 1:
+        boxes_xyxy = boxes_xyxy.reshape(1, -1)
+
+    score_threshold = float(CONFIG.get("score_threshold", 0.3))
+    max_detections = int(CONFIG.get("max_detections", 300))
+    keep = scores >= score_threshold
+    labels = labels[keep]
+    boxes_xyxy = boxes_xyxy[keep]
+    scores = scores[keep]
+
+    if scores.size == 0:
+        return np.zeros((1, 0, 6), dtype=np.float32)
+
+    order = np.argsort(-scores)[:max_detections]
+    labels = labels[order]
+    boxes_xyxy = boxes_xyxy[order]
+    scores = scores[order]
+    pred = np.concatenate([boxes_xyxy, scores[:, None], labels[:, None]], axis=1).astype(np.float32)
+    return pred[None, ...]
+
+
+def _prediction_rows(y_preds: np.ndarray):
+    y_preds = np.asarray(y_preds)
+    if y_preds.ndim == 3 and y_preds.shape[-1] == 6:
+        return [torch.from_numpy(y_preds[0].astype(np.float32))]
+    return non_max_suppression(torch.from_numpy(y_preds))
 
 
 # ------------------------------
@@ -76,6 +111,10 @@ def input_encoder(idx: int, preprocess: PreprocessResponse) -> np.ndarray:
     image = preprocess.data[idx][0].numpy().astype(np.float32)/255
     return image
 
+@tensorleap_input_encoder('orig_size')
+def input_size_encoder(idx: int, preprocess: PreprocessResponse) -> np.ndarray:
+    image_size = CONFIG["image_size"]
+    return np.array([image_size, image_size], dtype=np.float32)
 
 @tensorleap_gt_encoder('classes')
 def gt_encoder(idx: int, preprocessing: PreprocessResponse) -> np.ndarray:
@@ -188,13 +227,13 @@ def sample_metadata(idx: int, preprocessing: PreprocessResponse) -> dict:
     else:
         gt_class, bbox_areas, bbox_cx, bbox_cy = np.array([]), np.array([]), np.array([]), np.array([])
 
-    # KTH Added
-    help_classes = np.array([0,1])
-    
-    unique_classes, c = np.unique(gt_class, return_counts=True)
-    counts = np.zeros(len(help_classes), dtype=int)
-    idx = np.in1d(help_classes, unique_classes)
-    counts[idx] = c
+    unique_classes, class_counts = np.unique(gt_class, return_counts=True)
+    labels = DATA_CONFIG.get("pred_names", DATA_CONFIG.get("names", []))
+    class_count_map = {int(cls): int(cnt) for cls, cnt in zip(unique_classes, class_counts)}
+    per_label_counts = {
+        f"# of {label}": float(class_count_map[label_idx]) if label_idx in class_count_map else float(np.nan)
+        for label_idx, label in enumerate(labels)
+    }
     
     metadata_dict = {}
 
@@ -205,8 +244,6 @@ def sample_metadata(idx: int, preprocessing: PreprocessResponse) -> dict:
         "image_sharpness": float(sharpness),
         "# of objects": gt.shape[0],
         "# of unique objects": len(unique_classes),
-        "# of drones": counts[0],
-        "# of birds": counts[1],
         "bbox area mean": float(bbox_areas.mean()),
         "bbox area median": float(np.median(bbox_areas)),
         "bbox area min": float(bbox_areas.min() if len(bbox_areas) > 0 else np.nan),
@@ -224,6 +261,7 @@ def sample_metadata(idx: int, preprocessing: PreprocessResponse) -> dict:
         "bbox cy var": float(bbox_cy.var()),
         "bbox center var": float(bbox_cy.var()) + float(bbox_cx.var()), # a measure for object density
         #"average distance to NN": nn_dist_mean, # a measure for object density
+        **per_label_counts,
     })
     return metadata_dict
 
@@ -343,7 +381,7 @@ def gt_bb_decoder(image: np.ndarray, bb_gt: np.ndarray) -> LeapImageWithBBox:
     return LeapImageWithBBox(data=image, bounding_boxes=bboxes)
 
 @tensorleap_custom_visualizer("bb_decoder", LeapDataType.ImageWithBBox)
-def bb_decoder(image: np.ndarray, predictions: np.ndarray) -> LeapImageWithBBox:
+def bb_decoder(image: np.ndarray, labels: np.ndarray, boxes_xyxy: np.ndarray, scores: np.ndarray, *, predictions: np.ndarray = None) -> LeapImageWithBBox:
     """
     Overlays predicted bounding boxes on the image after NMS and format conversion.
 
@@ -354,8 +392,10 @@ def bb_decoder(image: np.ndarray, predictions: np.ndarray) -> LeapImageWithBBox:
     Returns:
         LeapImageWithBBox: Image with predicted bounding boxes.
     """
-    # Convert raw predictions into xyxy bboxes
-    preds = non_max_suppression(torch.from_numpy(predictions))[0].numpy()
+    if not predictions:
+        predictions = format_rtdetr_predictions(labels, boxes_xyxy, scores)
+    prediction_rows = _prediction_rows(predictions)
+    preds = prediction_rows[0].numpy() if len(prediction_rows) > 0 else np.zeros((0, 6), dtype=np.float32)
     preds = xyxy2xywh(preds)
 
     image = image.squeeze(0)
@@ -390,7 +430,7 @@ def bb_decoder(image: np.ndarray, predictions: np.ndarray) -> LeapImageWithBBox:
             "iou": MetricDirection.Upward,
             "accuracy": MetricDirection.Upward,
         })
-def get_per_sample_metrics(y_preds: np.ndarray, targets: np.ndarray):
+def get_per_sample_metrics(labels, boxes_xyxy, scores, targets: np.ndarray):
     """
     Calculates metrics per sample on the model's prediction
 
@@ -401,7 +441,7 @@ def get_per_sample_metrics(y_preds: np.ndarray, targets: np.ndarray):
     Returns:
         dict: Dictionary with metric values.
     """
-
+    y_preds = format_rtdetr_predictions(labels, boxes_xyxy, scores)
     def _update_metrics(metrics, precision, recall, f1, fp, tp, fn, iou, accuracy):
 
         metrics["precision"] = np.concatenate([metrics["precision"], np.array([precision], dtype=np.float32)])
@@ -423,7 +463,7 @@ def get_per_sample_metrics(y_preds: np.ndarray, targets: np.ndarray):
             "iou": np.array([], dtype=np.float32),
             "accuracy": np.array([], dtype=np.float32),
         }
-    preds = non_max_suppression(torch.from_numpy(y_preds))
+    preds = _prediction_rows(y_preds)
     for pred, gt in zip(preds, targets):
 
         mask = ~(gt == -1).any(axis=1)
@@ -457,10 +497,11 @@ def get_per_sample_metrics(y_preds: np.ndarray, targets: np.ndarray):
     return metrics
 
 @tensorleap_custom_metric('Confusion Matrix')
-def confusion_matrix_metric(y_preds: np.ndarray, targets: np.ndarray):
+def confusion_matrix_metric(labels: np.ndarray, boxes_xyxy: np.ndarray, scores: np.ndarray, targets: np.ndarray):
+    y_preds = format_rtdetr_predictions(labels, boxes_xyxy, scores)
     threshold=0.1
     confusion_matrices = []
-    preds = non_max_suppression(torch.from_numpy(y_preds))
+    preds = _prediction_rows(y_preds)
     for pred, gt in zip(preds, targets):
         confusion_matrix_elements = []
 
@@ -516,29 +557,3 @@ def confusion_matrix_metric(y_preds: np.ndarray, targets: np.ndarray):
             ))
         confusion_matrices.append(confusion_matrix_elements)
     return confusion_matrices
-
-# ------------------------------
-# Prediction Binding
-# ------------------------------
-# The model outputs a list of 4 tensors:
-# 1. Processed object detection results for visualization
-# 2. N raw prediction outputs used for computing loss
-
-# Bind the object detection output for visualization/interpretation
-# - This tensor contains bounding box predictions before NMS
-# - Shape: (Batch, Prediction scores, Num_BBoxes)
-# - Prediction scores contain the following scores:
-#   ["x", "y", "w", "h", "obj_conf"] + class names from DATA_CONFIG["pred_names"]
-# - 'channel_dim=1' indicates that the prediction scores are arranged along dimension 1
-leap_binder.add_prediction(
-    name='object detection',
-    labels=["x", "y", "w", "h", "obj_conf"] + DATA_CONFIG["pred_names"],
-    channel_dim=-1
-)
-
-torch_model = load_model(CONFIG["torch_model_weights_name"])
-yolov5_loss_compute = ComputeLoss(torch_model)
-yolov5_loss = yolov5_loss_factory(yolov5_loss_compute.nl)
-
-if __name__ == '__main__':
-    leap_binder.check()

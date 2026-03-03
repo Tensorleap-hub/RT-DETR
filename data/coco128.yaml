@@ -1,4 +1,4 @@
-path: "/Users/orram/Tensorleap/Rheinmetall/data/coco128"
+path: "/Users/orram/data/coco128"
 train: "images/train2017"
 val: "images/train2017"
 test: "images/train2017"

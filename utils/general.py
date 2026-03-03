@@ -29,7 +29,7 @@ from zipfile import ZipFile
 import cv2
 import numpy as np
 import pandas as pd
-import pkg_resources as pkg
+from packaging import version
 import torch
 import torchvision
 import yaml
@@ -337,7 +337,7 @@ def check_python(minimum='3.7.0'):
 
 def check_version(current='0.0.0', minimum='0.0.0', name='version ', pinned=False, hard=False, verbose=False):
     # Check version vs. required version
-    current, minimum = (pkg.parse_version(x) for x in (current, minimum))
+    current, minimum = (version.parse(x) for x in (current, minimum))
     result = (current == minimum) if pinned else (current >= minimum)  # bool
     s = f'{name}{minimum} required by YOLOv5, but {name}{current} is currently installed'  # string
     if hard:
@@ -481,11 +481,11 @@ def check_dataset(data, autodownload=True):
             data = yaml.safe_load(f)  # dictionary
 
     # Checks
-    for k in 'train', 'val', 'nc':
+    for k in 'train', 'val': #, 'nc':
         assert k in data, f"data.yaml '{k}:' field missing ❌"
-    if 'names' not in data:
+    if 'pred_names' not in data:
         LOGGER.warning("data.yaml 'names:' field missing ⚠️, assigning default names 'class0', 'class1', etc.")
-        data['names'] = [f'class{i}' for i in range(data['nc'])]  # default names
+        data['pred_names'] = [f'class{i}' for i in range(data['nc'])]  # default names
 
     # Resolve paths
     path = Path(extract_dir or data.get('path') or '')  # optional 'path' default to '.'
@@ -521,7 +521,7 @@ def check_dataset(data, autodownload=True):
             dt = f'({round(time.time() - t, 1)}s)'
             s = f"success ✅ {dt}, saved to {colorstr('bold', root)}" if r in (0, None) else f"failure {dt} ❌"
             LOGGER.info(f"Dataset download {s}")
-    check_font('Arial.ttf' if is_ascii(data['names']) else 'Arial.Unicode.ttf', progress=True)  # download fonts
+    check_font('Arial.ttf' if is_ascii(data['pred_names']) else 'Arial.Unicode.ttf', progress=True)  # download fonts
     return data  # dictionary
 
 
