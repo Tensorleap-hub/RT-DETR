@@ -1,5 +1,4 @@
 import onnxruntime as ort
-import numpy as np
 
 from code_loader.contract.datasetclasses import PredictionTypeHandler
 from code_loader.plot_functions.visualize import visualize
@@ -12,29 +11,50 @@ from leap_binder import *
 from leap_config import CONFIG, DATA_CONFIG, abs_path_from_root
 
 
+LABEL_NAMES = DATA_CONFIG.get("pred_names", DATA_CONFIG.get("names", []))
+OUTPUT_INDICES = {
+    "labels": int(CONFIG.get("output_indices", {}).get("labels", 0)),
+    "boxes": int(CONFIG.get("output_indices", {}).get("boxes", 1)),
+    "scores": int(CONFIG.get("output_indices", {}).get("scores", 2)),
+    "pred_logits": int(CONFIG.get("output_indices", {}).get("pred_logits", 3)),
+    "pred_boxes": int(CONFIG.get("output_indices", {}).get("pred_boxes", 4)),
+}
+
+
 prediction_type = PredictionTypeHandler(
     name="labels",
-    labels=DATA_CONFIG["pred_names"],
+    labels=LABEL_NAMES,
     channel_dim=-1,
 )
 prediction_type1 = PredictionTypeHandler(
     name="boxes",
-    labels=["x", "y", "w", "h"],
+    labels=["x1", "y1", "x2", "y2"],
     channel_dim=-1,
 )
 
 prediction_type2 = PredictionTypeHandler(
     name="confidence",
-    labels=["obj_conf"],
+    labels=["score"],
+    channel_dim=-1,
+)
+
+prediction_type3 = PredictionTypeHandler(
+    name="pred_logits",
+    labels=LABEL_NAMES,
+    channel_dim=-1,
+)
+
+prediction_type4 = PredictionTypeHandler(
+    name="pred_boxes",
+    labels=["cx", "cy", "w", "h"],
     channel_dim=-1,
 )
 
 
-@tensorleap_load_model([prediction_type,prediction_type1,prediction_type2])
+@tensorleap_load_model([prediction_type, prediction_type1, prediction_type2, prediction_type3, prediction_type4])
 def load_model():
     """
     Load the trained model for inference.
-    TODO: Update CONFIG['model_path'] with the real ONNX model path.
     """
     model_path = abs_path_from_root(CONFIG["model_path"])
     if not model_path.endswith(".onnx"):
@@ -47,22 +67,25 @@ def check_integration(idx, subset):
     model = load_model()
     image = input_encoder(idx, subset)
     gt = gt_encoder(idx, subset)
+    gt_boxes = gt_boxes_encoder(idx, subset)
+    gt_labels = gt_labels_encoder(idx, subset)
+    gt_valid_mask = gt_valid_mask_encoder(idx, subset)
 
-    model_inputs = model.get_inputs()
-    if CONFIG['model_type'] == "RTDETR":
-        image_size = input_size_encoder(idx, subset)
-        predictions = model.run(
-            None,
-            {
-                "images": image,
-                "orig_target_sizes": image_size,
-            },
-        )
-        labels, boxes_xyxy, scores = predictions[0], predictions[1], predictions[2]
+    orig_sizes = input_size_encoder(idx, subset)
+    if isinstance(orig_sizes, np.ndarray):
+        orig_sizes_for_model = orig_sizes.astype(np.int64)
     else:
-        input_name = model_inputs[0].name
-        predictions = model.run(None, {input_name: image})
-        main_pred = predictions[0]
+        orig_sizes_for_model = orig_sizes
+    predictions = model.run(
+        None,
+        {
+            "images": image,
+            "orig_target_sizes": orig_sizes_for_model,
+        },
+    )
+    labels = predictions[OUTPUT_INDICES["labels"]]
+    boxes_xyxy = predictions[OUTPUT_INDICES["boxes"]]
+    scores = predictions[OUTPUT_INDICES["scores"]]
 
     vis_image = image_visualizer(image)
     vis_gt = gt_bb_decoder(image, gt)
@@ -78,6 +101,12 @@ def check_integration(idx, subset):
 
     _ = get_per_sample_metrics(labels, boxes_xyxy, scores, gt)
     _ = confusion_matrix_metric(labels, boxes_xyxy, scores, gt)
+    pred_logits_idx = OUTPUT_INDICES["pred_logits"]
+    pred_boxes_idx = OUTPUT_INDICES["pred_boxes"]
+    pred_logits = predictions[pred_logits_idx]
+    pred_boxes = predictions[pred_boxes_idx]
+    _ = rtdetr_total_loss_native(pred_logits, pred_boxes, gt_boxes, gt_labels, gt_valid_mask)
+    _ = rtdetr_loss_components_native(pred_logits, pred_boxes, gt_boxes, gt_labels, gt_valid_mask)
     _ = sample_metadata(idx, subset)
 
 

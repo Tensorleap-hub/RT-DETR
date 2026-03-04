@@ -2,10 +2,9 @@ import cv2
 import torch
 import textwrap
 import numpy as np
-from typing import List
+from typing import Dict, List
 
 from utils.metrics import box_iou
-from code_loader import leap_binder
 from utils.dataloaders import create_dataloader
 from utils.general import check_dataset, colorstr
 from leap_utils import compute_precision_recall_f1_fp_tp_fn
@@ -21,6 +20,8 @@ from code_loader.inner_leap_binder.leapbinder_decorators import (
 )
 from leap_utils import compute_iou, compute_accuracy
 from leap_config import CONFIG, DATA_CONFIG, abs_path_from_root
+from rtdetr_native.criterion import RTDETRCriterionv2
+from rtdetr_native.matcher import HungarianMatcher
 
 def format_rtdetr_predictions(labels: np.ndarray, boxes_xyxy: np.ndarray, scores: np.ndarray) -> np.ndarray:
     labels = np.asarray(labels).squeeze()
@@ -57,6 +58,20 @@ def _prediction_rows(y_preds: np.ndarray):
     if y_preds.ndim == 3 and y_preds.shape[-1] == 6:
         return [torch.from_numpy(y_preds[0].astype(np.float32))]
     return non_max_suppression(torch.from_numpy(y_preds))
+
+
+def _label_names() -> List[str]:
+    return DATA_CONFIG.get("pred_names", DATA_CONFIG.get("names", []))
+
+
+COCO_CATEGORY_TO_LABEL = {
+    1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6, 8: 7, 9: 8, 10: 9, 11: 10, 13: 11, 14: 12, 15: 13, 16: 14,
+    17: 15, 18: 16, 19: 17, 20: 18, 21: 19, 22: 20, 23: 21, 24: 22, 25: 23, 27: 24, 28: 25, 31: 26, 32: 27,
+    33: 28, 34: 29, 35: 30, 36: 31, 37: 32, 38: 33, 39: 34, 40: 35, 41: 36, 42: 37, 43: 38, 44: 39, 46: 40,
+    47: 41, 48: 42, 49: 43, 50: 44, 51: 45, 52: 46, 53: 47, 54: 48, 55: 49, 56: 50, 57: 51, 58: 52, 59: 53,
+    60: 54, 61: 55, 62: 56, 63: 57, 64: 58, 65: 59, 67: 60, 70: 61, 72: 62, 73: 63, 74: 64, 75: 65, 76: 66,
+    77: 67, 78: 68, 79: 69, 80: 70, 81: 71, 82: 72, 84: 73, 85: 74, 86: 75, 87: 76, 88: 77, 89: 78, 90: 79,
+}
 
 
 # ------------------------------
@@ -111,73 +126,83 @@ def input_encoder(idx: int, preprocess: PreprocessResponse) -> np.ndarray:
     image = preprocess.data[idx][0].numpy().astype(np.float32)/255
     return image
 
-@tensorleap_input_encoder('orig_size')
+@tensorleap_input_encoder('orig_size', channel_dim=1)
 def input_size_encoder(idx: int, preprocess: PreprocessResponse) -> np.ndarray:
     image_size = CONFIG["image_size"]
     return np.array([image_size, image_size], dtype=np.float32)
 
-@tensorleap_gt_encoder('classes')
-def gt_encoder(idx: int, preprocessing: PreprocessResponse) -> np.ndarray:
-    """
-    Extracts and adjusts bounding boxes for the specified image index.
-
-    Args:
-        idx (int): Image index.
-        preprocessing (PreprocessResponse): Dataset wrapper with labels and shapes.
-
-    Returns:
-        np.ndarray: Array of adjusted bounding boxes in [cls, x, y, w, h] format.
-    """
-    mask = preprocessing.data.batch==idx
+def _padded_gt_for_sample(idx: int, preprocessing: PreprocessResponse) -> np.ndarray:
+    mask = preprocessing.data.batch == idx
     img_size = preprocessing.data.img_size
+    max_num_of_objs = int(CONFIG["max_num_of_objects"])
     labels_arr = []
+
     for i, is_selected in enumerate(mask):
         if not is_selected:
             continue
-        labels = preprocessing.data.labels[i] # shape: [N, 5] (label, x, y, w, h)
-
-        cls = np.expand_dims(labels[:,0], axis=1)
-        x = np.expand_dims(labels[:,1], axis=1)
-        y = np.expand_dims(labels[:,2], axis=1)
+        labels = preprocessing.data.labels[i]  # shape: [N, 5] (label, x, y, w, h)
+        cls = np.expand_dims(labels[:, 0], axis=1)
+        x = np.expand_dims(labels[:, 1], axis=1)
+        y = np.expand_dims(labels[:, 2], axis=1)
         w = np.expand_dims(labels[:, 3], axis=1)
-        h = np.expand_dims(labels[:,4], axis=1)
+        h = np.expand_dims(labels[:, 4], axis=1)
 
         if not preprocessing.data.rect:
-            # Get the original width and height of the image at index i
             original_w, original_h = preprocessing.data.shapes[i]
-            # Calculate the new image height after resizing the width to img_size
             if original_w > original_h:
                 new_h = original_h * img_size / original_w
-                # Compute the padding size required to make the final image square (only vertical padding is considered)
                 pad_size = img_size - new_h
-                # Adjust the vertical coordinate y to account for resizing and vertical padding
-                y = y * new_h + pad_size / 2 # scale y to new height and add half of the total vertical padding
-                y = y / img_size             # normalize y to the range [0, 1]
-                # Scale the height h based on the resized image height and normalize it
+                y = (y * new_h + (pad_size / 2)) / img_size
                 h = h * new_h / img_size
             else:
                 new_w = original_w * img_size / original_h
                 pad_size = img_size - new_w
-                # Adjust the horizontal coordinate x to account for resizing and horizontal padding
-                x = x * new_w + pad_size / 2 # scale x to new height and add half of the total horizontal padding
-                x = x / img_size # normalize x to the range [0, 1]
-                # Scale the width w based on the resized image height and normalize it
+                x = (x * new_w + (pad_size / 2)) / img_size
                 w = w * new_w / img_size
 
-        adjusted = np.concatenate([cls, x, y, w, h], axis=1)
-
-        max_num_of_objs = CONFIG["max_num_of_objects"]
+        adjusted = np.concatenate([cls, x, y, w, h], axis=1).astype(np.float32)
         if adjusted.shape[0] < max_num_of_objs:
             pad_rows = max_num_of_objs - adjusted.shape[0]
-            pad = np.full((pad_rows, adjusted.shape[1]), -1)  # Create padding rows filled with -1
+            pad = np.full((pad_rows, adjusted.shape[1]), -1, dtype=np.float32)
             adjusted = np.vstack([adjusted, pad])
-        elif labels.shape[0] > max_num_of_objs:
+        elif adjusted.shape[0] > max_num_of_objs:
             adjusted = adjusted[:max_num_of_objs, :]
 
         labels_arr.append(adjusted)
 
-    return np.array(labels_arr,dtype=np.float32).squeeze(0)
-    return np.array(labels_arr,dtype=np.float32).squeeze(0)
+    if not labels_arr:
+        return np.full((max_num_of_objs, 5), -1, dtype=np.float32)
+    return np.array(labels_arr, dtype=np.float32).squeeze(0)
+
+
+@tensorleap_gt_encoder('classes')
+def gt_encoder(idx: int, preprocessing: PreprocessResponse) -> np.ndarray:
+    """
+    Padded ground truth in [class, cx, cy, w, h] format.
+    """
+    return _padded_gt_for_sample(idx, preprocessing).astype(np.float32)
+
+
+@tensorleap_gt_encoder("gt_boxes")
+def gt_boxes_encoder(idx: int, preprocessing: PreprocessResponse) -> np.ndarray:
+    gt = _padded_gt_for_sample(idx, preprocessing)
+    boxes = gt[:, 1:5].copy()
+    invalid = (gt[:, 0] < 0)
+    boxes[invalid] = 0.0
+    return boxes.astype(np.float32)
+
+
+@tensorleap_gt_encoder("gt_labels")
+def gt_labels_encoder(idx: int, preprocessing: PreprocessResponse) -> np.ndarray:
+    gt = _padded_gt_for_sample(idx, preprocessing)
+    return gt[:, 0].astype(np.float32)
+
+
+@tensorleap_gt_encoder("gt_valid_mask")
+def gt_valid_mask_encoder(idx: int, preprocessing: PreprocessResponse) -> np.ndarray:
+    gt = _padded_gt_for_sample(idx, preprocessing)
+    valid = (gt[:, 0] >= 0).astype(np.float32)
+    return valid
 
 # ------------------------------
 # Metadata
@@ -268,6 +293,151 @@ def sample_metadata(idx: int, preprocessing: PreprocessResponse) -> dict:
 # ------------------------------
 # Custom Loss
 # ------------------------------
+def _loss_cfg() -> Dict:
+    loss_cfg = CONFIG.get("loss", {})
+    matcher_cfg = loss_cfg.get("matcher", {})
+    weight_cfg = loss_cfg.get("weight_dict", {})
+    return {
+        "map_coco_category_to_label": bool(loss_cfg.get("map_coco_category_to_label", False)),
+        "alpha": float(loss_cfg.get("alpha", 0.75)),
+        "gamma": float(loss_cfg.get("gamma", 2.0)),
+        "matcher": {
+            "cost_class": float(matcher_cfg.get("cost_class", 2.0)),
+            "cost_bbox": float(matcher_cfg.get("cost_bbox", 5.0)),
+            "cost_giou": float(matcher_cfg.get("cost_giou", 2.0)),
+            "alpha": float(matcher_cfg.get("alpha", 0.25)),
+            "gamma": float(matcher_cfg.get("gamma", 2.0)),
+        },
+        "weight_dict": {
+            "loss_vfl": float(weight_cfg.get("loss_vfl", 1.0)),
+            "loss_bbox": float(weight_cfg.get("loss_bbox", 5.0)),
+            "loss_giou": float(weight_cfg.get("loss_giou", 2.0)),
+        },
+    }
+
+
+def _extract_targets_for_native_loss(
+    gt_boxes: np.ndarray, gt_labels: np.ndarray, gt_valid_mask: np.ndarray
+) -> List[Dict[str, torch.Tensor]]:
+    boxes = gt_boxes[0] if gt_boxes.ndim == 3 else gt_boxes
+    labels = gt_labels[0] if gt_labels.ndim == 2 else gt_labels
+    valid = gt_valid_mask[0] if gt_valid_mask.ndim == 2 else gt_valid_mask
+
+    keep = valid > 0.5
+    boxes = boxes[keep].astype(np.float32)
+    labels = labels[keep].astype(np.int64)
+
+    cfg = _loss_cfg()
+    if cfg["map_coco_category_to_label"]:
+        mapped_labels = []
+        mapped_boxes = []
+        for box, cls in zip(boxes, labels):
+            mapped = COCO_CATEGORY_TO_LABEL.get(int(cls), -1)
+            if mapped >= 0:
+                mapped_labels.append(mapped)
+                mapped_boxes.append(box)
+        if mapped_boxes:
+            boxes = np.asarray(mapped_boxes, dtype=np.float32)
+            labels = np.asarray(mapped_labels, dtype=np.int64)
+        else:
+            boxes = np.zeros((0, 4), dtype=np.float32)
+            labels = np.zeros((0,), dtype=np.int64)
+
+    target = {
+        "boxes": torch.from_numpy(boxes),
+        "labels": torch.from_numpy(labels),
+    }
+    return [target]
+
+
+def compute_rtdetr_native_losses(
+    pred_logits: np.ndarray,
+    pred_boxes: np.ndarray,
+    gt_boxes: np.ndarray,
+    gt_labels: np.ndarray,
+    gt_valid_mask: np.ndarray,
+) -> Dict[str, float]:
+    logits = pred_logits if pred_logits.ndim == 3 else np.expand_dims(pred_logits, axis=0)
+    boxes = pred_boxes if pred_boxes.ndim == 3 else np.expand_dims(pred_boxes, axis=0)
+
+    outputs = {
+        "pred_logits": torch.from_numpy(logits.astype(np.float32)),
+        "pred_boxes": torch.from_numpy(boxes.astype(np.float32)),
+    }
+    targets = _extract_targets_for_native_loss(gt_boxes, gt_labels, gt_valid_mask)
+    cfg = _loss_cfg()
+    matcher = HungarianMatcher(
+        weight_dict={
+            "cost_class": cfg["matcher"]["cost_class"],
+            "cost_bbox": cfg["matcher"]["cost_bbox"],
+            "cost_giou": cfg["matcher"]["cost_giou"],
+        },
+        use_focal_loss=True,
+        alpha=cfg["matcher"]["alpha"],
+        gamma=cfg["matcher"]["gamma"],
+    )
+    criterion = RTDETRCriterionv2(
+        matcher=matcher,
+        weight_dict=cfg["weight_dict"],
+        losses=["vfl", "boxes"],
+        alpha=cfg["alpha"],
+        gamma=cfg["gamma"],
+        num_classes=int(outputs["pred_logits"].shape[-1]),
+    )
+    loss_tensors = criterion(outputs, targets)
+    scalar_losses = {
+        k: float(v.detach().cpu().item())
+        for k, v in loss_tensors.items()
+        if isinstance(v, torch.Tensor)
+    }
+    scalar_losses["total"] = float(sum(scalar_losses.values()))
+    return scalar_losses
+
+
+@tensorleap_custom_loss("rtdetr_total_loss_native")
+def rtdetr_total_loss_native(
+    pred_logits: np.ndarray,
+    pred_boxes: np.ndarray,
+    gt_boxes: np.ndarray,
+    gt_labels: np.ndarray,
+    gt_valid_mask: np.ndarray,
+) -> np.ndarray:
+    losses = compute_rtdetr_native_losses(
+        pred_logits=pred_logits,
+        pred_boxes=pred_boxes,
+        gt_boxes=gt_boxes,
+        gt_labels=gt_labels,
+        gt_valid_mask=gt_valid_mask,
+    )
+    return np.array([losses["total"]], dtype=np.float32)
+
+
+@tensorleap_custom_metric(
+    "rtdetr_loss_components_native",
+    direction={
+        "loss_vfl": MetricDirection.Downward,
+        "loss_bbox": MetricDirection.Downward,
+        "loss_giou": MetricDirection.Downward,
+        "total": MetricDirection.Downward,
+    },
+)
+def rtdetr_loss_components_native(
+    pred_logits: np.ndarray,
+    pred_boxes: np.ndarray,
+    gt_boxes: np.ndarray,
+    gt_labels: np.ndarray,
+    gt_valid_mask: np.ndarray,
+) -> Dict[str, np.ndarray]:
+    losses = compute_rtdetr_native_losses(
+        pred_logits=pred_logits,
+        pred_boxes=pred_boxes,
+        gt_boxes=gt_boxes,
+        gt_labels=gt_labels,
+        gt_valid_mask=gt_valid_mask,
+    )
+    return {k: np.array([v], dtype=np.float32) for k, v in losses.items()}
+
+
 def yolov5_loss_factory(num_scales):
     # Build predictions list
     preds_list = ', '.join([f'pred{i}' for i in range(num_scales)])
@@ -367,17 +537,24 @@ def gt_bb_decoder(image: np.ndarray, bb_gt: np.ndarray) -> LeapImageWithBBox:
     # Filter out padding rows
     bb_gt = bb_gt[mask]
 
-    bboxes = [
-        BoundingBox(
-            x=bbx[1],
-            y=bbx[2],
-            width=bbx[3],
-            height=bbx[4],
-            confidence=1.,
-            label=DATA_CONFIG["pred_names"][int(bbx[0])] if not np.isnan(bbx[0]) else 'Unknown Class'
+    labels = _label_names()
+    bboxes = []
+    for bbx in bb_gt:
+        label_idx = int(bbx[0]) if not np.isnan(bbx[0]) else -1
+        if 0 <= label_idx < len(labels):
+            label = labels[label_idx]
+        else:
+            label = "Unknown Class"
+        bboxes.append(
+            BoundingBox(
+                x=bbx[1],
+                y=bbx[2],
+                width=bbx[3],
+                height=bbx[4],
+                confidence=1.0,
+                label=label,
+            )
         )
-        for bbx in bb_gt
-    ]
     return LeapImageWithBBox(data=image, bounding_boxes=bboxes)
 
 @tensorleap_custom_visualizer("bb_decoder", LeapDataType.ImageWithBBox)
@@ -392,7 +569,7 @@ def bb_decoder(image: np.ndarray, labels: np.ndarray, boxes_xyxy: np.ndarray, sc
     Returns:
         LeapImageWithBBox: Image with predicted bounding boxes.
     """
-    if not predictions:
+    if predictions is None:
         predictions = format_rtdetr_predictions(labels, boxes_xyxy, scores)
     prediction_rows = _prediction_rows(predictions)
     preds = prediction_rows[0].numpy() if len(prediction_rows) > 0 else np.zeros((0, 6), dtype=np.float32)
@@ -403,17 +580,24 @@ def bb_decoder(image: np.ndarray, labels: np.ndarray, boxes_xyxy: np.ndarray, sc
     image = (image * 255).astype(np.uint8)
     h, w, _ = image.shape
 
-    bboxes = [
-        BoundingBox(
-            x=pred[0]/w,
-            y=pred[1]/h,
-            width=pred[2]/w,
-            height=pred[3]/h,
-            confidence=pred[4],
-            label=DATA_CONFIG["pred_names"][int(pred[5])] if not np.isnan(pred[5]) else 'Unknown Class'
+    label_names = _label_names()
+    bboxes = []
+    for pred in preds:
+        label_idx = int(pred[5]) if not np.isnan(pred[5]) else -1
+        if 0 <= label_idx < len(label_names):
+            label = label_names[label_idx]
+        else:
+            label = "Unknown Class"
+        bboxes.append(
+            BoundingBox(
+                x=pred[0] / w,
+                y=pred[1] / h,
+                width=pred[2] / w,
+                height=pred[3] / h,
+                confidence=pred[4],
+                label=label,
+            )
         )
-        for pred in preds
-    ]
     return LeapImageWithBBox(data=image, bounding_boxes=bboxes)
 
 # ------------------------------
@@ -501,6 +685,7 @@ def confusion_matrix_metric(labels: np.ndarray, boxes_xyxy: np.ndarray, scores: 
     y_preds = format_rtdetr_predictions(labels, boxes_xyxy, scores)
     threshold=0.1
     confusion_matrices = []
+    label_names = _label_names()
     preds = _prediction_rows(y_preds)
     for pred, gt in zip(preds, targets):
         confusion_matrix_elements = []
@@ -520,7 +705,7 @@ def confusion_matrix_metric(labels: np.ndarray, boxes_xyxy: np.ndarray, scores: 
             max_iou_ind = np.argmax(ious, axis=1)
             for i, prediction in enumerate(prediction_detected):
                 gt_idx = int(gt_labels[max_iou_ind[i]])
-                class_name = DATA_CONFIG["pred_names"][gt_idx]
+                class_name = label_names[gt_idx] if 0 <= gt_idx < len(label_names) else "Unknown Class"
                 gt_label = f"{class_name}"
                 confidence = pred[i, 4]
                 if prediction:  # TP
@@ -530,7 +715,8 @@ def confusion_matrix_metric(labels: np.ndarray, boxes_xyxy: np.ndarray, scores: 
                         float(confidence)
                     ))
                 else:  # FP
-                    class_name = DATA_CONFIG["pred_names"][int(pred[i,5])]
+                    pred_idx = int(pred[i, 5])
+                    class_name = label_names[pred_idx] if 0 <= pred_idx < len(label_names) else "Unknown Class"
                     pred_label = f"{class_name}"
                     confusion_matrix_elements.append(ConfusionMatrixElement(
                         str(pred_label),
@@ -543,7 +729,8 @@ def confusion_matrix_metric(labels: np.ndarray, boxes_xyxy: np.ndarray, scores: 
         for k, gt_detection in enumerate(gts_detected):
             label_idx = gt_labels[k]
             if not gt_detection : # FN
-                class_name = DATA_CONFIG["pred_names"][int(label_idx)]
+                class_idx = int(label_idx)
+                class_name = label_names[class_idx] if 0 <= class_idx < len(label_names) else "Unknown Class"
                 confusion_matrix_elements.append(ConfusionMatrixElement(
                     f"{class_name}",
                     ConfusionMatrixValue.Positive,

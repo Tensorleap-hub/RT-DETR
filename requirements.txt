@@ -12,8 +12,8 @@ py-cpuinfo
 thop
 pandas
 seaborn
-ultralytics==8.1.47
-tensorflow==2.15.0
+onnxruntime
 opencv-python==4.11.0.86
 typing-extensions==4.6.0
-code-loader
+ultralytics==8.1.47
+
