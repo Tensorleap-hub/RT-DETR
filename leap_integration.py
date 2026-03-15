@@ -1,4 +1,5 @@
 import onnxruntime as ort
+import numpy as np
 
 from code_loader.contract.datasetclasses import PredictionTypeHandler
 from code_loader.plot_functions.visualize import visualize
@@ -7,7 +8,23 @@ from code_loader.inner_leap_binder.leapbinder_decorators import (
     tensorleap_load_model,
 )
 
-from leap_binder import *
+from leap_binder import (
+    bb_decoder,
+    confusion_matrix_metric,
+    get_per_sample_metrics,
+    gt_bb_decoder,
+    gt_boxes_encoder,
+    gt_encoder,
+    gt_labels_encoder,
+    gt_valid_mask_encoder,
+    image_visualizer,
+    input_encoder,
+    input_size_encoder,
+    preprocess_func_leap,
+    rtdetr_loss_components_native,
+    rtdetr_total_loss_native,
+    sample_metadata,
+)
 from leap_config import CONFIG, DATA_CONFIG, abs_path_from_root
 
 
@@ -70,19 +87,32 @@ def check_integration(idx, subset):
     gt_boxes = gt_boxes_encoder(idx, subset)
     gt_labels = gt_labels_encoder(idx, subset)
     gt_valid_mask = gt_valid_mask_encoder(idx, subset)
-
     orig_sizes = input_size_encoder(idx, subset)
-    if isinstance(orig_sizes, np.ndarray):
-        orig_sizes_for_model = orig_sizes.astype(np.int64)
+
+    if idx is None:
+        predictions = model.run(
+            None,
+            {
+                "images": image,
+                "orig_target_sizes": orig_sizes,
+            },
+        )
     else:
-        orig_sizes_for_model = orig_sizes
-    predictions = model.run(
-        None,
-        {
-            "images": image,
-            "orig_target_sizes": orig_sizes_for_model,
-        },
-    )
+        image_for_model = np.expand_dims(image, axis=0) if image.ndim == 3 else image
+        if isinstance(orig_sizes, np.ndarray):
+            orig_sizes_for_model = orig_sizes.astype(np.int64)
+            if orig_sizes_for_model.ndim == 1:
+                orig_sizes_for_model = np.expand_dims(orig_sizes_for_model, axis=0)
+        else:
+            orig_sizes_for_model = orig_sizes
+        predictions = model.run(
+            None,
+            {
+                "images": image_for_model,
+                "orig_target_sizes": orig_sizes_for_model,
+            },
+        )
+
     labels = predictions[OUTPUT_INDICES["labels"]]
     boxes_xyxy = predictions[OUTPUT_INDICES["boxes"]]
     scores = predictions[OUTPUT_INDICES["scores"]]

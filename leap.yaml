@@ -3,7 +3,7 @@ secretId: ""
 entryFile: leap_integration.py
 include:
     - leap_integration.py
-    - leap_binder.py
+    - leap_binder/*.py
     - leap_utils.py
     - rtdetr_native/*.py
     - config.py
