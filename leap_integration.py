@@ -9,10 +9,10 @@ from code_loader.inner_leap_binder.leapbinder_decorators import (
 )
 
 from leap_binder import (
-    bb_decoder,
+    pred_bb_decoder,
     confusion_matrix_metric,
     get_per_sample_metrics,
-    gt_bb_decoder,
+    bb_decoder,
     gt_boxes_encoder,
     gt_encoder,
     gt_labels_encoder,
@@ -118,8 +118,8 @@ def check_integration(idx, subset):
     scores = predictions[OUTPUT_INDICES["scores"]]
 
     vis_image = image_visualizer(image)
-    vis_gt = gt_bb_decoder(image, gt)
-    vis_pred = bb_decoder(image, labels, boxes_xyxy, scores)
+    vis_gt = bb_decoder(image, gt,  labels, boxes_xyxy, scores)
+    vis_pred = pred_bb_decoder(image, labels, boxes_xyxy, scores)
 
     _ = vis_image
     _ = vis_gt

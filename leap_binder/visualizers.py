@@ -30,8 +30,14 @@ def image_visualizer(image: np.ndarray) -> LeapImage:
     return LeapImage(_image_to_uint8(image), compress=False)
 
 
-@tensorleap_custom_visualizer("bb_gt_decoder", LeapDataType.ImageWithBBox)
-def gt_bb_decoder(image: np.ndarray, bb_gt: np.ndarray) -> LeapImageWithBBox:
+@tensorleap_custom_visualizer("bb_decoder", LeapDataType.ImageWithBBox)
+def bb_decoder(image: np.ndarray, bb_gt: np.ndarray,
+               pred_labels: np.ndarray,
+               boxes_xyxy: np.ndarray,
+               scores: np.ndarray,
+               *,
+               predictions: np.ndarray = None
+    ) -> LeapImageWithBBox:
     image_data = _image_to_uint8(image)
     bb_gt = _squeeze_boxes(bb_gt)
     mask = ~(bb_gt == -1).any(axis=1)
@@ -42,7 +48,7 @@ def gt_bb_decoder(image: np.ndarray, bb_gt: np.ndarray) -> LeapImageWithBBox:
     for bbx in bb_gt:
         label_idx = int(bbx[0]) if not np.isnan(bbx[0]) else -1
         if 0 <= label_idx < len(labels):
-            label = labels[label_idx]
+            label = labels[label_idx] + "_GT"
         else:
             label = "Unknown Class"
         bboxes.append(
@@ -55,11 +61,13 @@ def gt_bb_decoder(image: np.ndarray, bb_gt: np.ndarray) -> LeapImageWithBBox:
                 label=label,
             )
         )
+    pred_boxes = pred_bb_creator(image, pred_labels, boxes_xyxy, scores, predictions=predictions)
+    bboxes = bboxes + pred_boxes
     return LeapImageWithBBox(data=image_data, bounding_boxes=bboxes)
 
 
-@tensorleap_custom_visualizer("bb_decoder", LeapDataType.ImageWithBBox)
-def bb_decoder(
+@tensorleap_custom_visualizer("pred_bb_decoder", LeapDataType.ImageWithBBox)
+def pred_bb_decoder(
     image: np.ndarray,
     labels: np.ndarray,
     boxes_xyxy: np.ndarray,
@@ -67,6 +75,19 @@ def bb_decoder(
     *,
     predictions: np.ndarray = None,
 ) -> LeapImageWithBBox:
+    image= _image_to_uint8(image)
+    bboxes = pred_bb_creator(image, labels, boxes_xyxy, scores, predictions=predictions)
+    return LeapImageWithBBox(data=image, bounding_boxes=bboxes)
+
+
+def pred_bb_creator(
+            image: np.ndarray,
+            labels: np.ndarray,
+            boxes_xyxy: np.ndarray,
+            scores: np.ndarray,
+            *,
+            predictions: np.ndarray = None,
+    ) -> list[BoundingBox]:
     if predictions is None:
         predictions = format_rtdetr_predictions(labels, boxes_xyxy, scores)
     prediction_tensor = prediction_rows(predictions)
@@ -81,9 +102,9 @@ def bb_decoder(
     for pred in preds:
         label_idx = int(pred[5]) if not np.isnan(pred[5]) else -1
         if 0 <= label_idx < len(names):
-            label = names[label_idx]
+            label = names[label_idx] + "_PRED"
         else:
-            label = "Unknown Class"
+            label = "Unknown Class" + "_PRED"
         bboxes.append(
             BoundingBox(
                 x=pred[0] / w,
@@ -94,4 +115,4 @@ def bb_decoder(
                 label=label,
             )
         )
-    return LeapImageWithBBox(data=image_data, bounding_boxes=bboxes)
+    return bboxes
