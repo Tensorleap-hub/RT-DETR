@@ -1,7 +1,7 @@
-path: "/Users/orram/data/coco128"
 train: "images/train2017"
 val: "images/train2017"
 test: "images/train2017"
+download: "https://github.com/ultralytics/yolov5/releases/download/v1.0/coco128.zip"
 pred_names:
   - "person"
   - "bicycle"

@@ -1,0 +1,82 @@
+train: "VisDrone2019-DET-train/images"
+val: "VisDrone2019-DET-val/images"
+test: "VisDrone2019-DET-test-dev/images"
+pred_names:
+  - "pedestrian"
+  - "people"
+  - "bicycle"
+  - "car"
+  - "van"
+  - "truck"
+  - "tricycle"
+  - "awning-tricycle"
+  - "bus"
+  - "motor"
+download: |
+  from pathlib import Path
+
+  from PIL import Image
+
+  from utils.general import download
+
+
+  def convert_box(image_size, row):
+      x, y, w, h = row[:4]
+      dw = 1.0 / image_size[0]
+      dh = 1.0 / image_size[1]
+      return (
+          (x + w / 2.0) * dw,
+          (y + h / 2.0) * dh,
+          w * dw,
+          h * dh,
+      )
+
+
+  def visdrone_to_yolo(split_dir):
+      split_dir = Path(split_dir)
+      labels_dir = split_dir / "labels"
+      labels_dir.mkdir(parents=True, exist_ok=True)
+
+      for image_path in sorted((split_dir / "images").glob("*.jpg")):
+          annotation_path = (split_dir / "annotations" / image_path.name).with_suffix(".txt")
+          yolo_rows = []
+          image_size = Image.open(image_path).size
+
+          if annotation_path.exists():
+              raw_rows = annotation_path.read_text().splitlines()
+          else:
+              raw_rows = []
+
+          for raw_row in raw_rows:
+              if not raw_row.strip():
+                  continue
+              parts = [value.strip() for value in raw_row.split(",")]
+              if len(parts) < 6 or any(value == "" for value in parts[:6]):
+                  continue
+              row = [int(value) for value in parts[:6]]
+              if row[4] == 0:
+                  continue
+              cls = row[5] - 1
+              if cls < 0:
+                  continue
+              box = convert_box(image_size, row)
+              yolo_rows.append(f"{cls} {' '.join(f'{value:.6f}' for value in box)}")
+
+          label_path = (labels_dir / image_path.name).with_suffix(".txt")
+          label_path.write_text("\n".join(yolo_rows) + ("\n" if yolo_rows else ""))
+
+
+  dataset_root = Path(yaml["path"]).resolve()
+  urls = [
+      "https://github.com/ultralytics/yolov5/releases/download/v1.0/VisDrone2019-DET-train.zip",
+      "https://github.com/ultralytics/yolov5/releases/download/v1.0/VisDrone2019-DET-val.zip",
+      "https://github.com/ultralytics/yolov5/releases/download/v1.0/VisDrone2019-DET-test-dev.zip",
+  ]
+  download(urls, dir=dataset_root, curl=True, threads=3)
+
+  for split_name in (
+      "VisDrone2019-DET-train",
+      "VisDrone2019-DET-val",
+      "VisDrone2019-DET-test-dev",
+  ):
+      visdrone_to_yolo(dataset_root / split_name)

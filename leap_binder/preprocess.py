@@ -11,18 +11,17 @@ from code_loader.inner_leap_binder.leapbinder_decorators import (
 from utils.dataloaders import create_dataloader
 from utils.general import check_dataset, colorstr
 
-from .common import CONFIG, abs_path_from_root
+from .common import CONFIG, DATA_CONFIG
 
 
 @tensorleap_preprocess()
 def preprocess_func_leap() -> List[PreprocessResponse]:
-    data_yaml_path = abs_path_from_root(CONFIG["data_yaml_path"])
-    data = check_dataset(data_yaml_path, autodownload=False)
+    data = check_dataset(dict(DATA_CONFIG), autodownload=bool(CONFIG.get("dataset_autodownload", False)))
 
     responses = []
     split_order = [split for split in ["train", "val", "test"] if split in data]
     if not split_order:
-        raise ValueError(f"No supported splits found in dataset config: {data_yaml_path}")
+        raise ValueError(f"No supported splits found in dataset config: {CONFIG['data_yaml_path']}")
     for split in split_order:
         _, dataset = create_dataloader(
             data[split],

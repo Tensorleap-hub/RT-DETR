@@ -36,8 +36,6 @@ OUTPUT_INDICES = {
     "pred_logits": int(CONFIG.get("output_indices", {}).get("pred_logits", 3)),
     "pred_boxes": int(CONFIG.get("output_indices", {}).get("pred_boxes", 4)),
 }
-
-
 prediction_type = PredictionTypeHandler(
     name="labels",
     labels=LABEL_NAMES,
@@ -48,19 +46,16 @@ prediction_type1 = PredictionTypeHandler(
     labels=["x1", "y1", "x2", "y2"],
     channel_dim=-1,
 )
-
 prediction_type2 = PredictionTypeHandler(
     name="confidence",
     labels=["score"],
     channel_dim=-1,
 )
-
 prediction_type3 = PredictionTypeHandler(
     name="pred_logits",
     labels=LABEL_NAMES,
     channel_dim=-1,
 )
-
 prediction_type4 = PredictionTypeHandler(
     name="pred_boxes",
     labels=["cx", "cy", "w", "h"],
@@ -118,7 +113,7 @@ def check_integration(idx, subset):
     scores = predictions[OUTPUT_INDICES["scores"]]
 
     vis_image = image_visualizer(image)
-    vis_gt = bb_decoder(image, gt,  labels, boxes_xyxy, scores)
+    vis_gt = bb_decoder(image, gt, labels, boxes_xyxy, scores)
     vis_pred = pred_bb_decoder(image, labels, boxes_xyxy, scores)
 
     _ = vis_image
@@ -131,10 +126,8 @@ def check_integration(idx, subset):
 
     _ = get_per_sample_metrics(labels, boxes_xyxy, scores, gt)
     _ = confusion_matrix_metric(labels, boxes_xyxy, scores, gt)
-    pred_logits_idx = OUTPUT_INDICES["pred_logits"]
-    pred_boxes_idx = OUTPUT_INDICES["pred_boxes"]
-    pred_logits = predictions[pred_logits_idx]
-    pred_boxes = predictions[pred_boxes_idx]
+    pred_logits = predictions[OUTPUT_INDICES["pred_logits"]]
+    pred_boxes = predictions[OUTPUT_INDICES["pred_boxes"]]
     _ = rtdetr_total_loss_native(pred_logits, pred_boxes, gt_boxes, gt_labels, gt_valid_mask)
     _ = rtdetr_loss_components_native(pred_logits, pred_boxes, gt_boxes, gt_labels, gt_valid_mask)
     _ = sample_metadata(idx, subset)

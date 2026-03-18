@@ -1,5 +1,11 @@
 image_size: 640
-data_yaml_path: "data/coco128.yaml"
+# Dataset options:
+# - coco
+# - coco128
+# - visdrone128
+# - visdrone
+dataset_name: "visdrone128"
+dataset_path: "data/visdrone128"
 torch_model_weights_name: "new_best.pt"
 
 max_num_of_objects: 500

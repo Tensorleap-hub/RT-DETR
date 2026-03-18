@@ -18,6 +18,12 @@ def average_dist_nn(boxes: np.ndarray) -> float:
     return float(np.mean(np.min(distance_matrix[:, 1:], axis=0)))
 
 
+def _safe_stat(values: np.ndarray, reducer) -> float:
+    if len(values) == 0:
+        return float(np.nan)
+    return float(reducer(values))
+
+
 @tensorleap_metadata("metadata")
 def sample_metadata(idx: int, preprocessing: PreprocessResponse) -> dict:
     sample = preprocessing.data[idx]
@@ -29,7 +35,7 @@ def sample_metadata(idx: int, preprocessing: PreprocessResponse) -> dict:
         gt_bbox = gt[:, 2:]
         bbox_areas = gt_bbox[:, 2] * gt_bbox[:, 3]
         bbox_cx = gt_bbox[:, 0]
-        bbox_cy = gt_bbox[: 1]
+        bbox_cy = gt_bbox[:, 1]
     else:
         gt_class, bbox_areas, bbox_cx, bbox_cy = np.array([]), np.array([]), np.array([]), np.array([])
 
@@ -47,22 +53,22 @@ def sample_metadata(idx: int, preprocessing: PreprocessResponse) -> dict:
         "image_sharpness": float(sharpness),
         "# of objects": gt.shape[0],
         "# of unique objects": len(unique_classes),
-        "bbox area mean": float(bbox_areas.mean()),
-        "bbox area median": float(np.median(bbox_areas)),
-        "bbox area min": float(bbox_areas.min() if len(bbox_areas) > 0 else np.nan),
-        "bbox area max": float(bbox_areas.max() if len(bbox_areas) > 0 else np.nan),
-        "bbox area var": float(bbox_areas.var()),
-        "bbox cx mean": float(bbox_cx.mean()),
-        "bbox cx median": float(np.median(bbox_cx)),
-        "bbox cx min": float(bbox_cx.min() if len(bbox_cx) > 0 else np.nan),
-        "bbox cx max": float(bbox_cx.max() if len(bbox_cx) > 0 else np.nan),
-        "bbox cx var": float(bbox_cx.var()),
-        "bbox cy mean": float(bbox_cy.mean()),
-        "bbox cy median": float(np.median(bbox_cy)),
-        "bbox cy min": float(bbox_cy.min() if len(bbox_cy) > 0 else np.nan),
-        "bbox cy max": float(bbox_cy.max() if len(bbox_cy) > 0 else np.nan),
-        "bbox cy var": float(bbox_cy.var()),
-        "bbox center var": float(bbox_cy.var()) + float(bbox_cx.var()),
+        "bbox area mean": _safe_stat(bbox_areas, np.mean),
+        "bbox area median": _safe_stat(bbox_areas, np.median),
+        "bbox area min": _safe_stat(bbox_areas, np.min),
+        "bbox area max": _safe_stat(bbox_areas, np.max),
+        "bbox area var": _safe_stat(bbox_areas, np.var),
+        "bbox cx mean": _safe_stat(bbox_cx, np.mean),
+        "bbox cx median": _safe_stat(bbox_cx, np.median),
+        "bbox cx min": _safe_stat(bbox_cx, np.min),
+        "bbox cx max": _safe_stat(bbox_cx, np.max),
+        "bbox cx var": _safe_stat(bbox_cx, np.var),
+        "bbox cy mean": _safe_stat(bbox_cy, np.mean),
+        "bbox cy median": _safe_stat(bbox_cy, np.median),
+        "bbox cy min": _safe_stat(bbox_cy, np.min),
+        "bbox cy max": _safe_stat(bbox_cy, np.max),
+        "bbox cy var": _safe_stat(bbox_cy, np.var),
+        "bbox center var": _safe_stat(bbox_cy, np.var) + _safe_stat(bbox_cx, np.var),
         **per_label_counts,
     }
     return metadata_dict

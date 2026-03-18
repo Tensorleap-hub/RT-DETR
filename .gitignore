@@ -27,6 +27,8 @@ storage.googleapis.com
 runs/*
 data/*
 data/images/*
+!data/visdrone128/
+!data/visdrone128/**
 !data/*.yaml
 !data/hyps
 !data/scripts

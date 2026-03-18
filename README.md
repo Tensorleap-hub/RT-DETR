@@ -1,146 +1,189 @@
-# 📦 YOLOv5 + VisDrone Integration on Tensorleap
-This project demonstrates how to integrate a YOLOv5 model with the VisDrone dataset using the Tensorleap platform. The integration is handled via the leap_binder.py script, which defines how data is loaded, visualized, and evaluated.
+# RT-DETR Tensorleap Integration
 
-This guide walks you through setup, local testing, model export, and pushing your project to Tensorleap.
+This repository contains a Tensorleap integration for object detection using an ONNX RT-DETR model. The current integration entrypoint is `leap_integration.py`, with dataset preprocessing, metrics, visualizers, losses, and metadata implemented under `leap_binder/`.
 
-## ✅ Prerequisites
-Before you begin, ensure you have:
-* 	Python >=3.8, <3.12 
-* 	[Poetry](https://python-poetry.org/docs/#installation) installed 
-*	The [Tensorleap CLI](https://docs.tensorleap.ai/tensorleap-integration/cli-assets-upload) installed and authenticated
+The integration is dataset-configurable from `leap_config.yaml` and currently supports:
 
-## 📥 Setup Instructions  
-### Clone the Repository
-```
-git clone https://github.com/Tensorleap-hub/yolov5_visdrone.git
-cd yolov5_visdrone
-```
-### Install Dependencies
-This project uses Poetry for environment management.
-```
+- `coco`
+- `coco128`
+- `visdrone128`
+- `visdrone`
+
+The default out-of-the-box configuration uses the committed `visdrone128` subset together with `rtdetrv2_r18vd_120e_raw_outputs.onnx`, so a fresh clone can run local validation without downloading a dataset first.
+
+## Prerequisites
+
+- Python `>=3.9,<3.11`
+- [Poetry](https://python-poetry.org/docs/#installation)
+- Tensorleap CLI installed and authenticated if you plan to push to the platform
+
+## Installation
+
+### Poetry
+
+```bash
 poetry install
 ```
-To run Python scripts using the virtual environment:
-```
-poetry run python leap_custom_test.py
-```
-### 📂 Dataset Configuration
-This integration uses the [VisDrone dataset](https://github.com/VisDrone/VisDrone-Dataset). Dataset structure should follow this pattern:
-```
-VisDrone/
-├── train/
-│   ├── images/
-│   └── labels/
-├── val/
-│   ├── images/
-│   └── labels/
-├── test/
-│   ├── images/
-│   └── labels/
+
+Run local commands with:
+
+```bash
+poetry run python leap_integration.py
 ```
 
-Each label file must match the corresponding image name and contain YOLO-style bounding box annotations:
+### pip
+
+If you want a local pip-based environment instead of Poetry, use:
+
+```bash
+pip install -r local_requirements.txt
 ```
-<class_id> <x_center> <y_center> <width> <height>  # All normalized [0, 1]
+
+`local_requirements.txt` mirrors the dependencies from `pyproject.toml` for local use.
+
+Do not use `requirements.txt` for local setup. In this repository, `requirements.txt` is reserved for Tensorleap packaging via `leap.yaml`.
+
+## Configuration
+
+Main configuration lives in `leap_config.yaml`.
+
+### Dataset selection
+
+Switch datasets by changing:
+
+```yaml
+dataset_name: "coco"
 ```
 
-#### Dataset Path
-Point the path field in VisDrone.yaml to your dataset root (must be inside the tensorleap mounted folder - usually ~/tensorleap).
+The default value in this repository is:
 
-To use a custom .yaml file, update the data_path inside the preprocess_func_leap() function in leap_binder.py.
-
-
-
-## ✅ Local Validation (Highly Recommended)
-Before pushing to Tensorleap, run a local test to verify that data loading and visualization work correctly:
+```yaml
+dataset_name: "visdrone128"
 ```
-poetry run python leap_custom_test.py
+
+The dataset root path is configured separately in `leap_config.yaml`:
+
+```yaml
+dataset_path: "data/visdrone128"
 ```
-This checks:
-* 	Data integration logic
-*	Bounding box visualization
-*	Metric and metadata computation
 
----
-## 🧠 Exporting Your Own Model
-If you wish to evaluate a custom PyTorch model, use the provided export function:
+Supported values:
+
+- `coco`
+- `coco128`
+- `visdrone128`
+- `visdrone`
+
+Dataset profiles are resolved in `leap_config.py` and point to:
+
+- `data/coco.yaml`
+- `data/coco128.yaml`
+- `data/visdrone128.yaml`
+- `data/visdrone.yaml`
+
+The dataset YAML selects split structure and class names. The actual filesystem root is taken from `dataset_path` in `leap_config.yaml`, not from the dataset YAML.
+
+### Dataset autodownload
+
+- `visdrone` defaults to `dataset_autodownload: true`
+- `coco`, `coco128`, and `visdrone128` default to `dataset_autodownload: false`
+
+You can still override `dataset_autodownload` explicitly in `leap_config.yaml` if needed.
+
+### Model configuration
+
+The current active model is configured via:
+
+```yaml
+model_path: "rtdetrv2_r18vd_120e_raw_outputs.onnx"
 ```
-from leap_utils import export_onnx
-export_onnx(model, "your_model.onnx")
+
+The current integration expects an ONNX model with:
+
+- inputs:
+  - `images`
+  - `orig_target_sizes`
+- outputs:
+  - `labels`
+  - `boxes`
+  - `scores`
+  - `pred_logits`
+  - `pred_boxes`
+
+If you change the ONNX model contract, the integration code may need to change as well.
+
+## Local validation
+
+Run the integration locally before pushing:
+
+```bash
+poetry run python leap_integration.py
 ```
-This ensures compatibility with Tensorleap’s ONNX pipeline.
 
----
+This validates:
 
-## 🚀 Pushing to Tensorleap
-Once local validation passes:
+- dataset loading
+- model inference
+- visualizers
+- custom metrics
+- metadata
+- custom loss hooks
+
+## Project structure
+
+Key files and folders:
+
+- `leap_integration.py`: Tensorleap entrypoint and integration test
+- `leap_config.yaml`: project configuration
+- `leap_config.py`: config loader and dataset profile resolution
+- `data/`: dataset YAML definitions
+- `leap_binder/preprocess.py`: preprocess and encoders
+- `leap_binder/metrics.py`: custom metrics
+- `leap_binder/visualizers.py`: image and bounding box visualizers
+- `leap_binder/losses.py`: custom loss and RT-DETR loss components
+- `leap_binder/metadata.py`: per-sample metadata
+
+## Dataset notes
+
+### VisDrone
+
+`data/visdrone.yaml` downloads the VisDrone detection archives and converts annotations into YOLO-format label files during setup.
+
+### VisDrone128
+
+`data/visdrone128.yaml` points to a small committed subset of VisDrone with `96` train images, `16` validation images, and `16` test images for quick local checks and git-tracked examples.
+
+### COCO128
+
+`data/coco128.yaml` points to a lightweight COCO subset intended for quick local validation.
+
+### COCO
+
+`data/coco.yaml` defines the full COCO 2017 dataset. It is much larger than COCO128 and is not enabled for autodownload by default.
+
+## Pushing to Tensorleap
+
+After local validation passes, copy the visdrone128 datset to tensorleap accessable folder, 
+update the leap_config.yaml and push the project with the current model:
+
+```bash
+leap push -m rtdetrv2_r18vd_120e_raw_outputs.onnx
 ```
-leap project push weights/yolov5s-visdrone.onnx
+
+If only code changes were made and the model asset did not change, prefer:
+
+```bash
+leap push
 ```
-Follow CLI prompts to select (or create) the:
-* Model
-* Project
-* Code Integration
 
-**Note**: If the model mapping (shown under the “Network” tab) has changed compared to Visdrone, reach out or adjust accordingly. This only needs to be done once.
+## Troubleshooting
 
-After confirming the mapping, click “Validate Assets” on the platform to verify shapes and consistency.
+- If visualizations look wrong, verify you are looking at the updated prediction visualizer path in `leap_binder/visualizers.py`.
+- If dataset loading fails, check `dataset_name`, `dataset_autodownload`, and the selected dataset YAML.
+- If platform validation fails while local validation passes, re-check model mapping and configured IO expectations.
 
----
+## References
 
-## 📌 Code Integration Overview (leap_binder.py) 
-This script defines how your model and dataset interact with the Tensorleap platform.
-
-#### Preprocessing
-* 	```preprocess_func_leap()``` - 
-Loads and structures train, val, and test datasets using your YAML config.
-
-#### Encoding
-* 	```input_encoder()``` - 
-Converts images to normalized NumPy arrays in channel-last format (HWC).
-* 	```gt_encoder()``` -
-Processes ground truth bounding boxes.
-
-#### Metadata
-* 	```sample_metadata()``` -
-Computes per-sample stats like sharpness, object count, and bounding box sizes.
-
-#### Custom Loss
-* 	```yolov5_loss()``` -
-YOLOv5-style multi-scale loss function using raw model outputs.
-
-#### Visualizers
-* 	```image_visualizer()``` -
-Shows raw input image.
-* 	```bb_decoder()``` -
-Displays ground truth bounding boxes.
-* 	```bb_predictor()``` -
-Applies NMS and shows predicted boxes.
-
-#### Metrics
-* 	```get_per_sample_metrics()``` -
-Computes precision, recall, F1, IoU, and accuracy per sample.
-
-#### Predictions
-
-Registered via ```leap_binder.add_prediction()```:
-*  Final detection outputs (processed and ready for NMS, used in eval mode) 
-* Intermediate feature maps (e.g., concatenate_128, 64, 32, used for loss computation)
-
----
-## 🛠 Tips & Troubleshooting
-#### Common errors:
-##### ```leap_custom_test.py``` failures:
-* Shape mismatch - debug and verify tensors shapes
-* Bounding boxes are misaligned in visualizations - make sure you follow the correct bbox convention.
-#### Validate Assets failures:
-* ```leap_custom_test.py``` passes and Validate Assets fails - check the mapping in the Network tab. 
-#### Usage tips:
-* If your code integration is working and you only need to update the code (without changing the model), use ```leap code push``` instead of ```leap project push``` to avoid re-uploading an already functioning model.
-* If not sure what code integration is currently in Tensorleap's platform - go to code integration tab in the network tab and see the last update time (and the code itself) 
-
----
-
-## 📚 References
-* [Tensorleap Docs](https://docs.tensorleap.ai/)
-* [VisDrone Dataset](https://github.com/VisDrone/VisDrone-Dataset)
+- [Tensorleap Docs](https://docs.tensorleap.ai/)
+- [VisDrone Dataset](https://github.com/VisDrone/VisDrone-Dataset)
+- [COCO Dataset](https://cocodataset.org/)

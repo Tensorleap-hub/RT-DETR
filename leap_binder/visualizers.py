@@ -14,7 +14,14 @@ def _image_to_uint8(image: np.ndarray) -> np.ndarray:
     image = np.asarray(image)
     if image.ndim == 4:
         image = image[0]
-    image = image.transpose(1, 2, 0)
+    if image.ndim != 3:
+        raise ValueError(f"Expected image with 3 dimensions, got shape {image.shape}")
+    if image.shape[0] in (1, 3) and image.shape[-1] not in (1, 3):
+        image = image.transpose(1, 2, 0)
+    elif image.shape[-1] not in (1, 3):
+        raise ValueError(f"Unsupported image shape for visualization: {image.shape}")
+    if image.dtype == np.uint8:
+        return image
     return (image * 255).astype(np.uint8)
 
 
@@ -31,13 +38,15 @@ def image_visualizer(image: np.ndarray) -> LeapImage:
 
 
 @tensorleap_custom_visualizer("bb_decoder", LeapDataType.ImageWithBBox)
-def bb_decoder(image: np.ndarray, bb_gt: np.ndarray,
-               pred_labels: np.ndarray,
-               boxes_xyxy: np.ndarray,
-               scores: np.ndarray,
-               *,
-               predictions: np.ndarray = None
-    ) -> LeapImageWithBBox:
+def bb_decoder(
+    image: np.ndarray,
+    bb_gt: np.ndarray,
+    pred_labels: np.ndarray,
+    boxes_xyxy: np.ndarray,
+    scores: np.ndarray,
+    *,
+    predictions: np.ndarray = None,
+) -> LeapImageWithBBox:
     image_data = _image_to_uint8(image)
     bb_gt = _squeeze_boxes(bb_gt)
     mask = ~(bb_gt == -1).any(axis=1)
@@ -75,19 +84,18 @@ def pred_bb_decoder(
     *,
     predictions: np.ndarray = None,
 ) -> LeapImageWithBBox:
-    image= _image_to_uint8(image)
     bboxes = pred_bb_creator(image, labels, boxes_xyxy, scores, predictions=predictions)
-    return LeapImageWithBBox(data=image, bounding_boxes=bboxes)
+    return LeapImageWithBBox(data=_image_to_uint8(image), bounding_boxes=bboxes)
 
 
 def pred_bb_creator(
-            image: np.ndarray,
-            labels: np.ndarray,
-            boxes_xyxy: np.ndarray,
-            scores: np.ndarray,
-            *,
-            predictions: np.ndarray = None,
-    ) -> list[BoundingBox]:
+    image: np.ndarray,
+    labels: np.ndarray,
+    boxes_xyxy: np.ndarray,
+    scores: np.ndarray,
+    *,
+    predictions: np.ndarray = None,
+) -> list[BoundingBox]:
     if predictions is None:
         predictions = format_rtdetr_predictions(labels, boxes_xyxy, scores)
     prediction_tensor = prediction_rows(predictions)
