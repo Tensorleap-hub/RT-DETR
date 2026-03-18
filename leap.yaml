@@ -10,7 +10,7 @@ include:
     - leap_config.py
     - leap_config.yaml
     - requirements.txt
-    - data/coco128.yaml
+    - data/*
     - models/*.py
     - utils/*.py
     - utils/**/*.py
