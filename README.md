@@ -14,7 +14,6 @@ The default out-of-the-box configuration uses the committed `visdrone128` subset
 ## Prerequisites
 
 - Python `>=3.9,<3.11`
-- [Poetry](https://python-poetry.org/docs/#installation)
 - Tensorleap CLI installed and authenticated if you plan to push to the platform
 
 ## Installation
