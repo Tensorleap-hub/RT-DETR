@@ -1,9 +1,9 @@
 [tool.poetry]
-name = "yolov5"
-version = "7.0.0"
-description = "Ultralytics YOLOv5 for SOTA object detection, instance segmentation and image classification."
-authors = ["Glenn Jocher", "Ayush Chaurasia", "Jing Qiu"]
+name = "RT-DETR-Tensorleap"
+version = ""
+description = ""
 readme = "README.md"
+package-mode = false
 
 [tool.poetry.dependencies]
 python = ">=3.9,<3.11"
