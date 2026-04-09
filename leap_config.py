@@ -1,6 +1,9 @@
+import ntpath
 import os
+import posixpath
 import yaml
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, Iterable, List
 
 DATASET_PROFILES = {
     "coco": {
@@ -17,15 +20,65 @@ DATASET_PROFILES = {
     },
     "visdrone": {
         "data_yaml_path": "data/visdrone.yaml",
-        "dataset_autodownload": True,
+        "dataset_autodownload": False,
     },
 }
 
+ROOT = Path(__file__).resolve().parent
+
+
+def _is_absolute_path(path: str) -> bool:
+    return ntpath.isabs(path) or posixpath.isabs(path)
+
 
 def abs_path_from_root(path):
-    root = os.path.abspath(os.path.dirname(__file__))
-    file_path = os.path.join(root, path)
-    return file_path
+    path_str = os.fspath(path)
+    expanded_path = os.path.expandvars(os.path.expanduser(path_str))
+    if _is_absolute_path(expanded_path):
+        return str(Path(expanded_path))
+    return str(ROOT / expanded_path)
+
+
+def _as_path_candidates(path_value: Any) -> List[str]:
+    if path_value is None:
+        return []
+    if isinstance(path_value, (str, os.PathLike)):
+        return [os.fspath(path_value)]
+    if isinstance(path_value, list):
+        return [os.fspath(candidate) for candidate in path_value]
+    raise TypeError("dataset_path must be a string or a list of strings.")
+
+
+def _split_paths_exist(dataset_root: str, split_value: Any) -> bool:
+    if not split_value:
+        return True
+    split_paths = split_value if isinstance(split_value, list) else [split_value]
+    root_path = Path(abs_path_from_root(dataset_root))
+    return all((root_path / split_path).exists() for split_path in split_paths)
+
+
+def _required_dataset_splits(data_config: Dict[str, Any]) -> Iterable[Any]:
+    return (
+        data_config.get(split_name)
+        for split_name in ("train", "val", "test")
+        if data_config.get(split_name)
+    )
+
+
+def resolve_dataset_path(config: Dict[str, Any], data_config: Dict[str, Any]) -> str:
+    dataset_path_candidates = _as_path_candidates(config.get("dataset_path"))
+    if not dataset_path_candidates:
+        return data_config.get("path", "")
+
+    for candidate in dataset_path_candidates:
+        if all(_split_paths_exist(candidate, split_value) for split_value in _required_dataset_splits(data_config)):
+            return candidate
+
+    attempted_paths = [abs_path_from_root(candidate) for candidate in dataset_path_candidates]
+    raise FileNotFoundError(
+        "Dataset not found in any configured dataset_path. "
+        f"Attempted roots: {attempted_paths}"
+    )
 
 def load_yaml(path) -> Dict[str, Any]:
     file_path = abs_path_from_root(path)
@@ -51,7 +104,7 @@ def load_project_config() -> Dict[str, Any]:
 def load_dataset_config(config: Dict[str, Any]) -> Dict[str, Any]:
     data_yaml_path = config["data_yaml_path"]
     data_config = load_yaml(data_yaml_path)
-    dataset_path = config.get("dataset_path")
+    dataset_path = resolve_dataset_path(config, data_config)
     if dataset_path:
         data_config["path"] = dataset_path
     return data_config

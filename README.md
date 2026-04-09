@@ -63,8 +63,12 @@ dataset_name: "visdrone128"
 The dataset root path is configured separately in `leap_config.yaml`:
 
 ```yaml
-dataset_path: "data/visdrone128"
+dataset_path:
+  - "data/visdrone128"
+  - "/data/visdrone128"
 ```
+
+`dataset_path` may be either a single root path or an ordered list of candidate roots. The integration checks the candidates in order and uses the first one that contains the configured dataset split paths. If none of the candidates contain the dataset, it raises an exception listing the attempted roots.
 
 Supported values:
 

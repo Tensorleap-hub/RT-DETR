@@ -5,7 +5,11 @@ image_size: 640
 # - visdrone128
 # - visdrone
 dataset_name: "visdrone128"
-dataset_path: "data/visdrone128"
+# `dataset_path` can be a single root or an ordered list of candidate roots.
+# The integration uses the first root that contains the configured split data.
+dataset_path:
+  - "C:\\data\\visdrone128"
+  - "data/visdrone128"
 torch_model_weights_name: "new_best.pt"
 
 max_num_of_objects: 500
