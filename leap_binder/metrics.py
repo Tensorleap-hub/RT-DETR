@@ -8,7 +8,7 @@ from leap_utils import compute_accuracy, compute_iou, compute_precision_recall_f
 from utils.general import xywh2xyxy
 from utils.metrics import box_iou
 
-from .common import CONFIG, format_rtdetr_predictions, label_names, prediction_rows
+from .common import CONFIG, format_rtdetr_concat_predictions, format_rtdetr_predictions, label_names, prediction_rows
 
 
 def _batched_targets(targets: np.ndarray) -> np.ndarray:
@@ -18,22 +18,7 @@ def _batched_targets(targets: np.ndarray) -> np.ndarray:
     return targets
 
 
-@tensorleap_custom_metric(
-    name="per_sample_metrics",
-    direction={
-        "precision": MetricDirection.Upward,
-        "recall": MetricDirection.Upward,
-        "f1": MetricDirection.Upward,
-        "FP": MetricDirection.Downward,
-        "TP": MetricDirection.Upward,
-        "FN": MetricDirection.Downward,
-        "iou": MetricDirection.Upward,
-        "accuracy": MetricDirection.Upward,
-    },
-)
-def get_per_sample_metrics(labels, boxes_xyxy, scores, targets: np.ndarray):
-    y_preds = format_rtdetr_predictions(labels, boxes_xyxy, scores)
-
+def get_per_sample_metrics_from_predictions(y_preds: np.ndarray, targets: np.ndarray):
     def _update_metrics(metrics, precision, recall, f1, fp, tp, fn, iou, accuracy):
         metrics["precision"] = np.concatenate([metrics["precision"], np.array([precision], dtype=np.float32)])
         metrics["recall"] = np.concatenate([metrics["recall"], np.array([recall], dtype=np.float32)])
@@ -85,9 +70,43 @@ def get_per_sample_metrics(labels, boxes_xyxy, scores, targets: np.ndarray):
     return metrics
 
 
-@tensorleap_custom_metric("Confusion Matrix")
-def confusion_matrix_metric(labels: np.ndarray, boxes_xyxy: np.ndarray, scores: np.ndarray, targets: np.ndarray):
+@tensorleap_custom_metric(
+    name="per_sample_metrics",
+    direction={
+        "precision": MetricDirection.Upward,
+        "recall": MetricDirection.Upward,
+        "f1": MetricDirection.Upward,
+        "FP": MetricDirection.Downward,
+        "TP": MetricDirection.Upward,
+        "FN": MetricDirection.Downward,
+        "iou": MetricDirection.Upward,
+        "accuracy": MetricDirection.Upward,
+    },
+)
+def get_per_sample_metrics(labels, boxes_xyxy, scores, targets: np.ndarray):
     y_preds = format_rtdetr_predictions(labels, boxes_xyxy, scores)
+    return get_per_sample_metrics_from_predictions(y_preds, targets)
+
+
+@tensorleap_custom_metric(
+    name="per_sample_metrics_concat_scores",
+    direction={
+        "precision": MetricDirection.Upward,
+        "recall": MetricDirection.Upward,
+        "f1": MetricDirection.Upward,
+        "FP": MetricDirection.Downward,
+        "TP": MetricDirection.Upward,
+        "FN": MetricDirection.Downward,
+        "iou": MetricDirection.Upward,
+        "accuracy": MetricDirection.Upward,
+    },
+)
+def get_per_sample_metrics_concat_scores(labels, boxes_with_scores, targets: np.ndarray):
+    y_preds = format_rtdetr_concat_predictions(labels, boxes_with_scores)
+    return get_per_sample_metrics_from_predictions(y_preds, targets)
+
+
+def confusion_matrix_metric_from_predictions(y_preds: np.ndarray, targets: np.ndarray):
     threshold = 0.1
     confusion_matrices = []
     names = label_names()
@@ -137,3 +156,15 @@ def confusion_matrix_metric(labels: np.ndarray, boxes_xyxy: np.ndarray, scores: 
             )
         confusion_matrices.append(confusion_matrix_elements)
     return confusion_matrices
+
+
+@tensorleap_custom_metric("Confusion Matrix")
+def confusion_matrix_metric(labels: np.ndarray, boxes_xyxy: np.ndarray, scores: np.ndarray, targets: np.ndarray):
+    y_preds = format_rtdetr_predictions(labels, boxes_xyxy, scores)
+    return confusion_matrix_metric_from_predictions(y_preds, targets)
+
+
+@tensorleap_custom_metric("Confusion Matrix Concat Scores")
+def confusion_matrix_metric_concat_scores(labels: np.ndarray, boxes_with_scores: np.ndarray, targets: np.ndarray):
+    y_preds = format_rtdetr_concat_predictions(labels, boxes_with_scores)
+    return confusion_matrix_metric_from_predictions(y_preds, targets)

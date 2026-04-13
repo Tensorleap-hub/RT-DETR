@@ -7,7 +7,7 @@ from code_loader.inner_leap_binder.leapbinder_decorators import tensorleap_custo
 from code_loader.visualizers.default_visualizers import LeapImage
 from utils.general import xyxy2xywh
 
-from .common import format_rtdetr_predictions, label_names, prediction_rows
+from .common import format_rtdetr_concat_predictions, format_rtdetr_predictions, label_names, prediction_rows
 
 
 def _image_to_uint8(image: np.ndarray) -> np.ndarray:
@@ -47,6 +47,57 @@ def bb_decoder(
     *,
     predictions: np.ndarray = None,
 ) -> LeapImageWithBBox:
+    if predictions is None:
+        predictions = format_rtdetr_predictions(pred_labels, boxes_xyxy, scores)
+    return bb_decoder_from_predictions(image, bb_gt, predictions)
+
+
+@tensorleap_custom_visualizer("pred_bb_decoder", LeapDataType.ImageWithBBox)
+def pred_bb_decoder(
+    image: np.ndarray,
+    labels: np.ndarray,
+    boxes_xyxy: np.ndarray,
+    scores: np.ndarray,
+    *,
+    predictions: np.ndarray = None,
+) -> LeapImageWithBBox:
+    if predictions is None:
+        predictions = format_rtdetr_predictions(labels, boxes_xyxy, scores)
+    return pred_bb_decoder_from_predictions(image, predictions)
+
+
+@tensorleap_custom_visualizer("bb_decoder_concat_scores", LeapDataType.ImageWithBBox)
+def bb_decoder_concat_scores(
+    image: np.ndarray,
+    bb_gt: np.ndarray,
+    pred_labels: np.ndarray,
+    boxes_with_scores: np.ndarray,
+    *,
+    predictions: np.ndarray = None,
+) -> LeapImageWithBBox:
+    if predictions is None:
+        predictions = format_rtdetr_concat_predictions(pred_labels, boxes_with_scores)
+    return bb_decoder_from_predictions(image, bb_gt, predictions)
+
+
+@tensorleap_custom_visualizer("pred_bb_decoder_concat_scores", LeapDataType.ImageWithBBox)
+def pred_bb_decoder_concat_scores(
+    image: np.ndarray,
+    labels: np.ndarray,
+    boxes_with_scores: np.ndarray,
+    *,
+    predictions: np.ndarray = None,
+) -> LeapImageWithBBox:
+    if predictions is None:
+        predictions = format_rtdetr_concat_predictions(labels, boxes_with_scores)
+    return pred_bb_decoder_from_predictions(image, predictions)
+
+
+def bb_decoder_from_predictions(
+    image: np.ndarray,
+    bb_gt: np.ndarray,
+    predictions: np.ndarray,
+) -> LeapImageWithBBox:
     image_data = _image_to_uint8(image)
     bb_gt = _squeeze_boxes(bb_gt)
     mask = ~(bb_gt == -1).any(axis=1)
@@ -70,34 +121,24 @@ def bb_decoder(
                 label=label,
             )
         )
-    pred_boxes = pred_bb_creator(image, pred_labels, boxes_xyxy, scores, predictions=predictions)
+    pred_boxes = pred_bb_creator(image, predictions=predictions)
     bboxes = bboxes + pred_boxes
     return LeapImageWithBBox(data=image_data, bounding_boxes=bboxes)
 
 
-@tensorleap_custom_visualizer("pred_bb_decoder", LeapDataType.ImageWithBBox)
-def pred_bb_decoder(
+def pred_bb_decoder_from_predictions(
     image: np.ndarray,
-    labels: np.ndarray,
-    boxes_xyxy: np.ndarray,
-    scores: np.ndarray,
-    *,
-    predictions: np.ndarray = None,
+    predictions: np.ndarray,
 ) -> LeapImageWithBBox:
-    bboxes = pred_bb_creator(image, labels, boxes_xyxy, scores, predictions=predictions)
+    bboxes = pred_bb_creator(image, predictions=predictions)
     return LeapImageWithBBox(data=_image_to_uint8(image), bounding_boxes=bboxes)
 
 
 def pred_bb_creator(
     image: np.ndarray,
-    labels: np.ndarray,
-    boxes_xyxy: np.ndarray,
-    scores: np.ndarray,
     *,
-    predictions: np.ndarray = None,
+    predictions: np.ndarray,
 ) -> list[BoundingBox]:
-    if predictions is None:
-        predictions = format_rtdetr_predictions(labels, boxes_xyxy, scores)
     prediction_tensor = prediction_rows(predictions)
     preds = prediction_tensor[0].numpy() if len(prediction_tensor) > 0 else np.zeros((0, 6), dtype=np.float32)
     preds = xyxy2xywh(preds)

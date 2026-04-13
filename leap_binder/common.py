@@ -7,6 +7,15 @@ from leap_config import CONFIG, DATA_CONFIG, abs_path_from_root
 from utils.general import non_max_suppression
 
 
+def split_boxes_and_scores_from_concat(boxes_with_scores: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    boxes_with_scores = np.asarray(boxes_with_scores)
+    if boxes_with_scores.shape[-1] < 5:
+        raise ValueError(
+            f"Expected boxes tensor with last dimension >= 5 for concat-score format, got shape {boxes_with_scores.shape}"
+        )
+    return boxes_with_scores[..., :4], boxes_with_scores[..., 4]
+
+
 def format_rtdetr_predictions(labels: np.ndarray, boxes_xyxy: np.ndarray, scores: np.ndarray) -> np.ndarray:
     labels = np.asarray(labels).squeeze()
     boxes_xyxy = np.asarray(boxes_xyxy).squeeze()
@@ -35,6 +44,11 @@ def format_rtdetr_predictions(labels: np.ndarray, boxes_xyxy: np.ndarray, scores
     scores = scores[order]
     pred = np.concatenate([boxes_xyxy, scores[:, None], labels[:, None]], axis=1).astype(np.float32)
     return pred[None, ...]
+
+
+def format_rtdetr_concat_predictions(labels: np.ndarray, boxes_with_scores: np.ndarray) -> np.ndarray:
+    boxes_xyxy, scores = split_boxes_and_scores_from_concat(boxes_with_scores)
+    return format_rtdetr_predictions(labels, boxes_xyxy, scores)
 
 
 def prediction_rows(y_preds: np.ndarray) -> List[torch.Tensor]:

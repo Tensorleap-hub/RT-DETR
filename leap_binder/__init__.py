@@ -1,12 +1,22 @@
 from .losses import (
+    compute_detection_losses,
     compute_rtdetr_native_losses,
+    detection_f1_loss,
+    detection_f1_loss_concat_scores,
+    detection_iou_loss,
+    detection_iou_loss_concat_scores,
     rtdetr_loss_components_native,
     rtdetr_total_loss_native,
     yolov5_loss_factory,
     yolov5_new_loss,
 )
 from .metadata import average_dist_nn, sample_metadata
-from .metrics import confusion_matrix_metric, get_per_sample_metrics
+from .metrics import (
+    confusion_matrix_metric,
+    confusion_matrix_metric_concat_scores,
+    get_per_sample_metrics,
+    get_per_sample_metrics_concat_scores,
+)
 from .preprocess import (
     gt_boxes_encoder,
     gt_encoder,
@@ -16,15 +26,29 @@ from .preprocess import (
     input_size_encoder,
     preprocess_func_leap,
 )
-from .visualizers import pred_bb_decoder, bb_decoder, image_visualizer
+from .visualizers import (
+    bb_decoder,
+    bb_decoder_concat_scores,
+    image_visualizer,
+    pred_bb_decoder,
+    pred_bb_decoder_concat_scores,
+)
 
 __all__ = [
     "average_dist_nn",
     "pred_bb_decoder",
+    "compute_detection_losses",
     "compute_rtdetr_native_losses",
     "confusion_matrix_metric",
+    "confusion_matrix_metric_concat_scores",
+    "detection_f1_loss",
+    "detection_f1_loss_concat_scores",
+    "detection_iou_loss",
+    "detection_iou_loss_concat_scores",
     "get_per_sample_metrics",
+    "get_per_sample_metrics_concat_scores",
     "bb_decoder",
+    "bb_decoder_concat_scores",
     "gt_boxes_encoder",
     "gt_encoder",
     "gt_labels_encoder",
@@ -33,6 +57,7 @@ __all__ = [
     "input_encoder",
     "input_size_encoder",
     "preprocess_func_leap",
+    "pred_bb_decoder_concat_scores",
     "rtdetr_loss_components_native",
     "rtdetr_total_loss_native",
     "sample_metadata",

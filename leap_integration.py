@@ -1,6 +1,7 @@
 import onnxruntime as ort
 import numpy as np
-
+import os
+os.environ['TL_DISABLE_ANALYTICS'] = 'true'
 from code_loader.contract.datasetclasses import PredictionTypeHandler
 from code_loader.plot_functions.visualize import visualize
 from code_loader.inner_leap_binder.leapbinder_decorators import (
@@ -9,10 +10,16 @@ from code_loader.inner_leap_binder.leapbinder_decorators import (
 )
 
 from leap_binder import (
-    pred_bb_decoder,
-    confusion_matrix_metric,
-    get_per_sample_metrics,
     bb_decoder,
+    bb_decoder_concat_scores,
+    confusion_matrix_metric,
+    confusion_matrix_metric_concat_scores,
+    detection_f1_loss,
+    detection_f1_loss_concat_scores,
+    detection_iou_loss,
+    detection_iou_loss_concat_scores,
+    get_per_sample_metrics,
+    get_per_sample_metrics_concat_scores,
     gt_boxes_encoder,
     gt_encoder,
     gt_labels_encoder,
@@ -20,6 +27,8 @@ from leap_binder import (
     image_visualizer,
     input_encoder,
     input_size_encoder,
+    pred_bb_decoder,
+    pred_bb_decoder_concat_scores,
     preprocess_func_leap,
     rtdetr_loss_components_native,
     rtdetr_total_loss_native,
@@ -29,13 +38,26 @@ from leap_config import CONFIG, DATA_CONFIG, abs_path_from_root
 
 
 LABEL_NAMES = DATA_CONFIG.get("pred_names", DATA_CONFIG.get("names", []))
+MODEL_OUTPUT_FORMAT = str(CONFIG.get("model_output_format", "rtdetr_raw"))
+MODEL_HAS_SEPARATE_SCORES = MODEL_OUTPUT_FORMAT in {"rtdetr_raw", "detections"}
+MODEL_HAS_CONCAT_SCORES = MODEL_OUTPUT_FORMAT == "detections_concat_scores"
+MODEL_HAS_RAW_PREDICTIONS = MODEL_OUTPUT_FORMAT == "rtdetr_raw"
+
+
+def _output_index(name: str, default: int) -> int:
+    return int(CONFIG.get("output_indices", {}).get(name, default))
+
+
 OUTPUT_INDICES = {
-    "labels": int(CONFIG.get("output_indices", {}).get("labels", 0)),
-    "boxes": int(CONFIG.get("output_indices", {}).get("boxes", 1)),
-    "scores": int(CONFIG.get("output_indices", {}).get("scores", 2)),
-    "pred_logits": int(CONFIG.get("output_indices", {}).get("pred_logits", 3)),
-    "pred_boxes": int(CONFIG.get("output_indices", {}).get("pred_boxes", 4)),
+    "labels": _output_index("labels", 0),
+    "boxes": _output_index("boxes", 1),
 }
+if MODEL_HAS_SEPARATE_SCORES:
+    OUTPUT_INDICES["scores"] = _output_index("scores", 2)
+if MODEL_HAS_RAW_PREDICTIONS:
+    OUTPUT_INDICES["pred_logits"] = _output_index("pred_logits", 3)
+    OUTPUT_INDICES["pred_boxes"] = _output_index("pred_boxes", 4)
+
 prediction_type = PredictionTypeHandler(
     name="labels",
     labels=LABEL_NAMES,
@@ -43,7 +65,7 @@ prediction_type = PredictionTypeHandler(
 )
 prediction_type1 = PredictionTypeHandler(
     name="boxes",
-    labels=["x1", "y1", "x2", "y2"],
+    labels=["x1", "y1", "x2", "y2", "score"] if MODEL_HAS_CONCAT_SCORES else ["x1", "y1", "x2", "y2"],
     channel_dim=-1,
 )
 prediction_type2 = PredictionTypeHandler(
@@ -62,8 +84,29 @@ prediction_type4 = PredictionTypeHandler(
     channel_dim=-1,
 )
 
+PREDICTION_TYPES = [prediction_type, prediction_type1]
+if MODEL_HAS_SEPARATE_SCORES:
+    PREDICTION_TYPES.append(prediction_type2)
+if MODEL_HAS_RAW_PREDICTIONS:
+    PREDICTION_TYPES.extend([prediction_type3, prediction_type4])
 
-@tensorleap_load_model([prediction_type, prediction_type1, prediction_type2, prediction_type3, prediction_type4])
+if MODEL_HAS_SEPARATE_SCORES:
+    SELECTED_BB_DECODER = bb_decoder
+    SELECTED_PRED_BB_DECODER = pred_bb_decoder
+    SELECTED_PER_SAMPLE_METRIC = get_per_sample_metrics
+    SELECTED_CONFUSION_MATRIX_METRIC = confusion_matrix_metric
+    SELECTED_IOU_LOSS = detection_iou_loss
+    SELECTED_F1_LOSS = detection_f1_loss
+else:
+    SELECTED_BB_DECODER = bb_decoder_concat_scores
+    SELECTED_PRED_BB_DECODER = pred_bb_decoder_concat_scores
+    SELECTED_PER_SAMPLE_METRIC = get_per_sample_metrics_concat_scores
+    SELECTED_CONFUSION_MATRIX_METRIC = confusion_matrix_metric_concat_scores
+    SELECTED_IOU_LOSS = detection_iou_loss_concat_scores
+    SELECTED_F1_LOSS = detection_f1_loss_concat_scores
+
+
+@tensorleap_load_model(PREDICTION_TYPES)
 def load_model():
     """
     Load the trained model for inference.
@@ -109,12 +152,15 @@ def check_integration(idx, subset):
         )
 
     labels = predictions[OUTPUT_INDICES["labels"]]
-    boxes_xyxy = predictions[OUTPUT_INDICES["boxes"]]
-    scores = predictions[OUTPUT_INDICES["scores"]]
+    boxes_output = predictions[OUTPUT_INDICES["boxes"]]
+    prediction_args = (labels, boxes_output)
+    if MODEL_HAS_SEPARATE_SCORES:
+        scores = predictions[OUTPUT_INDICES["scores"]]
+        prediction_args = (labels, boxes_output, scores)
 
     vis_image = image_visualizer(image)
-    vis_gt = bb_decoder(image, gt, labels, boxes_xyxy, scores)
-    vis_pred = pred_bb_decoder(image, labels, boxes_xyxy, scores)
+    vis_gt = SELECTED_BB_DECODER(image, gt, *prediction_args)
+    vis_pred = SELECTED_PRED_BB_DECODER(image, *prediction_args)
 
     _ = vis_image
     _ = vis_gt
@@ -124,12 +170,15 @@ def check_integration(idx, subset):
         visualize(vis_gt, title="Ground truth boxes")
         visualize(vis_pred, title="Predicted boxes")
 
-    _ = get_per_sample_metrics(labels, boxes_xyxy, scores, gt)
-    _ = confusion_matrix_metric(labels, boxes_xyxy, scores, gt)
-    pred_logits = predictions[OUTPUT_INDICES["pred_logits"]]
-    pred_boxes = predictions[OUTPUT_INDICES["pred_boxes"]]
-    _ = rtdetr_total_loss_native(pred_logits, pred_boxes, gt_boxes, gt_labels, gt_valid_mask)
-    _ = rtdetr_loss_components_native(pred_logits, pred_boxes, gt_boxes, gt_labels, gt_valid_mask)
+    _ = SELECTED_PER_SAMPLE_METRIC(*prediction_args, gt)
+    _ = SELECTED_CONFUSION_MATRIX_METRIC(*prediction_args, gt)
+    _ = SELECTED_IOU_LOSS(*prediction_args, gt)
+    _ = SELECTED_F1_LOSS(*prediction_args, gt)
+    if MODEL_HAS_RAW_PREDICTIONS:
+        pred_logits = predictions[OUTPUT_INDICES["pred_logits"]]
+        pred_boxes = predictions[OUTPUT_INDICES["pred_boxes"]]
+        _ = rtdetr_total_loss_native(pred_logits, pred_boxes, gt_boxes, gt_labels, gt_valid_mask)
+        _ = rtdetr_loss_components_native(pred_logits, pred_boxes, gt_boxes, gt_labels, gt_valid_mask)
     _ = sample_metadata(idx, subset)
 
 

@@ -5,23 +5,11 @@ import yaml
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
-DATASET_PROFILES = {
-    "coco": {
-        "data_yaml_path": "data/coco.yaml",
-        "dataset_autodownload": False,
-    },
-    "coco128": {
-        "data_yaml_path": "data/coco128.yaml",
-        "dataset_autodownload": False,
-    },
-    "visdrone128": {
-        "data_yaml_path": "data/visdrone128.yaml",
-        "dataset_autodownload": False,
-    },
-    "visdrone": {
-        "data_yaml_path": "data/visdrone.yaml",
-        "dataset_autodownload": False,
-    },
+
+SUPPORTED_MODEL_OUTPUT_FORMATS = {
+    "rtdetr_raw",
+    "detections",
+    "detections_concat_scores",
 }
 
 ROOT = Path(__file__).resolve().parent
@@ -88,16 +76,12 @@ def load_yaml(path) -> Dict[str, Any]:
 
 def load_project_config() -> Dict[str, Any]:
     config = load_yaml("leap_config.yaml")
-    dataset_name = config.get("dataset_name")
-    if dataset_name:
-        if dataset_name not in DATASET_PROFILES:
-            raise ValueError(
-                f"Unsupported dataset_name: {dataset_name}. "
-                f"Expected one of {sorted(DATASET_PROFILES)}."
-            )
-        dataset_profile = DATASET_PROFILES[dataset_name]
-        config.setdefault("data_yaml_path", dataset_profile["data_yaml_path"])
-        config.setdefault("dataset_autodownload", dataset_profile["dataset_autodownload"])
+    model_output_format = config.setdefault("model_output_format", "rtdetr_raw")
+    if model_output_format not in SUPPORTED_MODEL_OUTPUT_FORMATS:
+        raise ValueError(
+            f"Unsupported model_output_format: {model_output_format}. "
+            f"Expected one of {sorted(SUPPORTED_MODEL_OUTPUT_FORMATS)}."
+        )
     return config
 
 

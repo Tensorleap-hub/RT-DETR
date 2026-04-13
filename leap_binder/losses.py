@@ -11,8 +11,17 @@ from code_loader.inner_leap_binder.leapbinder_decorators import (
 )
 from rtdetr_native.criterion import RTDETRCriterionv2
 from rtdetr_native.matcher import HungarianMatcher
+from utils.general import xywh2xyxy
 
-from .common import COCO_CATEGORY_TO_LABEL, CONFIG
+from leap_utils import compute_iou, compute_precision_recall_f1_fp_tp_fn
+
+from .common import (
+    COCO_CATEGORY_TO_LABEL,
+    CONFIG,
+    format_rtdetr_concat_predictions,
+    format_rtdetr_predictions,
+    prediction_rows,
+)
 
 
 def _loss_cfg() -> Dict:
@@ -116,6 +125,48 @@ def compute_rtdetr_native_losses(
     return scalar_losses
 
 
+def _batched_targets(targets: np.ndarray) -> np.ndarray:
+    targets = np.asarray(targets)
+    if targets.ndim == 2:
+        return targets[None, ...]
+    return targets
+
+
+def compute_detection_losses(targets: np.ndarray, *, y_preds: np.ndarray) -> Dict[str, np.ndarray]:
+    preds = prediction_rows(y_preds)
+
+    iou_losses = []
+    f1_losses = []
+
+    for pred, gt in zip(preds, _batched_targets(targets)):
+        mask = ~(gt == -1).any(axis=1)
+        gt = gt[mask]
+        gt = torch.from_numpy(gt)
+
+        if gt.shape[0] == 0 and pred.shape[0] == 0:
+            iou_losses.append(0.0)
+            f1_losses.append(0.0)
+            continue
+
+        if pred.shape[0] == 0 or gt.shape[0] == 0:
+            iou_losses.append(1.0)
+            f1_losses.append(1.0)
+            continue
+
+        pred_boxes = pred[:, :4] / CONFIG["image_size"]
+        gt_boxes = xywh2xyxy(gt[:, 1:])
+        _, _, f1, _, _, _ = compute_precision_recall_f1_fp_tp_fn(gt_boxes, pred_boxes, iou_threshold=0.1)
+        iou = compute_iou(gt_boxes, pred_boxes)
+
+        iou_losses.append(float(1.0 - iou))
+        f1_losses.append(float(1.0 - f1))
+
+    return {
+        "iou_loss": np.asarray(iou_losses, dtype=np.float32),
+        "f1_loss": np.asarray(f1_losses, dtype=np.float32),
+    }
+
+
 @tensorleap_custom_loss("rtdetr_total_loss_native")
 def rtdetr_total_loss_native(
     pred_logits: np.ndarray,
@@ -132,6 +183,48 @@ def rtdetr_total_loss_native(
         gt_valid_mask=gt_valid_mask,
     )
     return np.array([losses["total"]], dtype=np.float32)
+
+
+@tensorleap_custom_loss("detection_iou_loss")
+def detection_iou_loss(
+    labels: np.ndarray,
+    boxes_xyxy: np.ndarray,
+    scores: np.ndarray,
+    targets: np.ndarray,
+) -> np.ndarray:
+    losses = compute_detection_losses(targets, y_preds=format_rtdetr_predictions(labels, boxes_xyxy, scores))
+    return losses["iou_loss"]
+
+
+@tensorleap_custom_loss("detection_f1_loss")
+def detection_f1_loss(
+    labels: np.ndarray,
+    boxes_xyxy: np.ndarray,
+    scores: np.ndarray,
+    targets: np.ndarray,
+) -> np.ndarray:
+    losses = compute_detection_losses(targets, y_preds=format_rtdetr_predictions(labels, boxes_xyxy, scores))
+    return losses["f1_loss"]
+
+
+@tensorleap_custom_loss("detection_iou_loss_concat_scores")
+def detection_iou_loss_concat_scores(
+    labels: np.ndarray,
+    boxes_with_scores: np.ndarray,
+    targets: np.ndarray,
+) -> np.ndarray:
+    losses = compute_detection_losses(targets, y_preds=format_rtdetr_concat_predictions(labels, boxes_with_scores))
+    return losses["iou_loss"]
+
+
+@tensorleap_custom_loss("detection_f1_loss_concat_scores")
+def detection_f1_loss_concat_scores(
+    labels: np.ndarray,
+    boxes_with_scores: np.ndarray,
+    targets: np.ndarray,
+) -> np.ndarray:
+    losses = compute_detection_losses(targets, y_preds=format_rtdetr_concat_predictions(labels, boxes_with_scores))
+    return losses["f1_loss"]
 
 
 @tensorleap_custom_metric(

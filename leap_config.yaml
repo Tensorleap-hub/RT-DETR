@@ -4,17 +4,24 @@ image_size: 640
 # - coco128
 # - visdrone128
 # - visdrone
-dataset_name: "visdrone128"
+data_yaml_path: "data/visdrone128.yaml"
+dataset_autodownload: False
 # `dataset_path` can be a single root or an ordered list of candidate roots.
 # The integration uses the first root that contains the configured split data.
 dataset_path:
   - "C:\\data\\visdrone128"
-  - "data/visdrone128"
+  - "/Users/orram/Tensorleap/data/visdrone128"
 torch_model_weights_name: "new_best.pt"
 
 max_num_of_objects: 500
-model_path: "rtdetrv2_r18vd_120e_raw_outputs.onnx"
+#model_path: "rtdetrv2_r18vd_120e_raw_outputs.onnx"
+model_path: "model-base.onnx"
 model_type: "RTDETR"
+# Supported model output contracts:
+# - rtdetr_raw: labels, boxes, scores, pred_logits, pred_boxes
+# - detections: labels, boxes, scores
+# - detections_concat_scores: labels, boxes where the last channel is score
+model_output_format: detections_concat_scores #"rtdetr_raw"
 output_indices:
   labels: 0
   boxes: 1

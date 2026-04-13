@@ -101,7 +101,30 @@ The current active model is configured via:
 model_path: "rtdetrv2_r18vd_120e_raw_outputs.onnx"
 ```
 
-The current integration expects an ONNX model with:
+The integration supports these ONNX output contracts, configured by `model_output_format` in `leap_config.yaml`:
+
+- `rtdetr_raw`
+  - outputs: `labels`, `boxes`, `scores`, `pred_logits`, `pred_boxes`
+  - enables RT-DETR native loss hooks, detection metrics, and detection losses
+- `detections`
+  - outputs: `labels`, `boxes`, `scores`
+  - enables detection metrics, detection losses, and visualizers
+- `detections_concat_scores`
+  - outputs: `labels`, `boxes`
+  - expects the `boxes` tensor to be `[x1, y1, x2, y2, score]`
+  - enables alternate metrics, detection losses, and visualizers that read score from the last box channel
+  - RT-DETR native loss hooks are not used because raw outputs are absent
+
+For example:
+
+```yaml
+model_output_format: "detections_concat_scores"
+output_indices:
+  labels: 0
+  boxes: 1
+```
+
+For `rtdetr_raw`, the ONNX model is expected to expose:
 
 - inputs:
   - `images`
@@ -113,8 +136,6 @@ The current integration expects an ONNX model with:
   - `pred_logits`
   - `pred_boxes`
 
-If you change the ONNX model contract, the integration code may need to change as well.
-
 ## Local validation
 
 Run the integration locally before pushing:
@@ -123,12 +144,23 @@ Run the integration locally before pushing:
 poetry run python leap_integration.py
 ```
 
+To export an RT-DETR v1 checkpoint to ONNX from the repo root, use:
+
+```bash
+poetry run python export_onnx.py \
+  -c vendor/RT-DETR/rtdetr_pytorch/configs/rtdetr/rtdetr_r18vd_6x_coco.yml \
+  -r path/to/checkpoint.pth \
+  -o model.onnx \
+  --loss-outputs
+```
+
 This validates:
 
 - dataset loading
 - model inference
 - visualizers
 - custom metrics
+- custom detection losses
 - metadata
 - custom loss hooks
 
@@ -139,6 +171,7 @@ Key files and folders:
 - `leap_integration.py`: Tensorleap entrypoint and integration test
 - `leap_config.yaml`: project configuration
 - `leap_config.py`: config loader and dataset profile resolution
+- `export_onnx.py`: root-level RT-DETR v1 ONNX exporter
 - `data/`: dataset YAML definitions
 - `leap_binder/preprocess.py`: preprocess and encoders
 - `leap_binder/metrics.py`: custom metrics
