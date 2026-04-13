@@ -14,14 +14,13 @@ dataset_path:
 torch_model_weights_name: "new_best.pt"
 
 max_num_of_objects: 500
-#model_path: "rtdetrv2_r18vd_120e_raw_outputs.onnx"
-model_path: "model-base.onnx"
+model_path: "rtdetrv2_r18vd_120e_raw_outputs.onnx"
 model_type: "RTDETR"
 # Supported model output contracts:
 # - rtdetr_raw: labels, boxes, scores, pred_logits, pred_boxes
 # - detections: labels, boxes, scores
 # - detections_concat_scores: labels, boxes where the last channel is score
-model_output_format: detections_concat_scores #"rtdetr_raw"
+model_output_format: "rtdetr_raw"
 output_indices:
   labels: 0
   boxes: 1
