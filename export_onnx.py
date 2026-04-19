@@ -4,6 +4,7 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
+import torchvision
 import yaml
 
 
@@ -76,6 +77,27 @@ class ExportModel(nn.Module):
         return labels, boxes, scores
 
 
+class ClientFormatModel(nn.Module):
+    def __init__(self, cfg) -> None:
+        super().__init__()
+        self.model = cfg.model.deploy()
+
+    def forward(self, images):
+        outputs = self.model(images)
+        pred_logits = outputs["pred_logits"]
+        pred_boxes = outputs["pred_boxes"]
+
+        h, w = images.shape[-2], images.shape[-1]
+        boxes = torchvision.ops.box_convert(pred_boxes, in_fmt="cxcywh", out_fmt="xyxy")
+        scale = torch.tensor([w, h, w, h], dtype=boxes.dtype, device=boxes.device)
+        boxes = boxes * scale
+
+        logits = pred_logits[:, :, :-1]
+        scores = torch.softmax(pred_logits, dim=-1)[:, :, :-1]
+
+        return boxes, scores, logits
+
+
 def output_names(args):
     if args.concat_output and args.loss_outputs:
         return ["labels", "boxes", "pred_logits", "pred_boxes"]
@@ -98,6 +120,26 @@ def dynamic_axes(args):
 
 def export(args):
     cfg = build_model(args)
+
+    if args.client_format:
+        h = args.input_height or args.input_size
+        w = args.input_width or args.input_size
+        model = ClientFormatModel(cfg)
+        model.eval()
+        data = torch.rand(args.batch_size, 3, h, w)
+        _ = model(data)
+        torch.onnx.export(
+            model,
+            (data,),
+            args.output_file,
+            input_names=["images"],
+            output_names=["boxes", "scores", "logits"],
+            opset_version=16,
+            verbose=False,
+            do_constant_folding=True,
+        )
+        return
+
     model = ExportModel(cfg, concat_output=args.concat_output, loss_outputs=args.loss_outputs)
     model.eval()
 
@@ -163,6 +205,12 @@ def parse_args():
         default=False,
         help="Also export raw pred_logits and pred_boxes for loss computation",
     )
+    parser.add_argument("--client-format", action="store_true", default=False,
+                        help="Export in Rheinmetall client format: boxes, scores[B,N,C], logits[B,N,C]")
+    parser.add_argument("--input-height", type=int, default=None,
+                        help="Input image height for non-square inputs")
+    parser.add_argument("--input-width", type=int, default=None,
+                        help="Input image width for non-square inputs")
     parser.add_argument("--update", "-u", nargs="+", help="update yaml config")
     parser.set_defaults(dynamic=True)
     parser.add_argument(
