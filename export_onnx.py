@@ -81,6 +81,12 @@ class ClientFormatModel(nn.Module):
     def __init__(self, cfg) -> None:
         super().__init__()
         self.model = cfg.model.deploy()
+        postproc = cfg.postprocessor
+        if getattr(postproc, 'use_focal_loss', False):
+            raise ValueError(
+                "ClientFormatModel requires use_focal_loss=False. "
+                "The client format uses softmax + background-class removal."
+            )
 
     def forward(self, images):
         outputs = self.model(images)
@@ -128,6 +134,14 @@ def export(args):
         model.eval()
         data = torch.rand(args.batch_size, 3, h, w)
         _ = model(data)
+        export_kwargs = {}
+        if args.dynamic:
+            export_kwargs["dynamic_axes"] = {
+                "images": {0: "batch"},
+                "boxes": {0: "batch"},
+                "scores": {0: "batch"},
+                "logits": {0: "batch"},
+            }
         torch.onnx.export(
             model,
             (data,),
@@ -137,6 +151,7 @@ def export(args):
             opset_version=16,
             verbose=False,
             do_constant_folding=True,
+            **export_kwargs,
         )
         return
 
