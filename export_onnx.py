@@ -2,6 +2,8 @@ import argparse
 import sys
 from pathlib import Path
 
+import numpy as np
+import onnx
 import torch
 import torch.nn as nn
 import torchvision
@@ -119,6 +121,17 @@ def dynamic_axes(args):
     return axes
 
 
+def _fix_double_constants(path):
+    m = onnx.load(path)
+    for node in m.graph.node:
+        if node.op_type == "Constant":
+            for attr in node.attribute:
+                if attr.HasField("t") and attr.t.data_type == onnx.TensorProto.DOUBLE:
+                    arr = np.array(onnx.numpy_helper.to_array(attr.t), dtype=np.float32)
+                    attr.t.CopyFrom(onnx.numpy_helper.from_array(arr))
+    onnx.save(m, path)
+
+
 def export(args):
     cfg = build_model(args)
 
@@ -148,6 +161,7 @@ def export(args):
             do_constant_folding=True,
             **export_kwargs,
         )
+        _fix_double_constants(args.output_file)
         return
 
     model = ExportModel(cfg, concat_output=args.concat_output, loss_outputs=args.loss_outputs)
