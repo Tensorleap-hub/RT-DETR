@@ -21,6 +21,7 @@ from .common import (
     format_class_scores_predictions,
     format_rtdetr_concat_predictions,
     format_rtdetr_predictions,
+    image_scale_wh,
     prediction_rows,
 )
 
@@ -154,7 +155,7 @@ def compute_detection_losses(targets: np.ndarray, *, y_preds: np.ndarray) -> Dic
             f1_losses.append(1.0)
             continue
 
-        pred_boxes = pred[:, :4] / CONFIG["image_size"]
+        pred_boxes = pred[:, :4] / image_scale_wh(CONFIG["image_size"])
         gt_boxes = xywh2xyxy(gt[:, 1:])
         _, _, f1, _, _, _ = compute_precision_recall_f1_fp_tp_fn(gt_boxes, pred_boxes, iou_threshold=0.1)
         iou = compute_iou(gt_boxes, pred_boxes)

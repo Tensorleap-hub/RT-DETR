@@ -8,7 +8,7 @@ from leap_utils import compute_accuracy, compute_iou, compute_precision_recall_f
 from utils.general import xywh2xyxy
 from utils.metrics import box_iou
 
-from .common import CONFIG, format_class_scores_predictions, format_rtdetr_concat_predictions, format_rtdetr_predictions, label_names, prediction_rows
+from .common import CONFIG, format_class_scores_predictions, format_rtdetr_concat_predictions, format_rtdetr_predictions, image_scale_wh, label_names, prediction_rows
 
 
 def _batched_targets(targets: np.ndarray) -> np.ndarray:
@@ -57,7 +57,7 @@ def get_per_sample_metrics_from_predictions(y_preds: np.ndarray, targets: np.nda
             _update_metrics(metrics, 0, np.nan, 0, pred.shape[0], 0, 0, 0, 0)
             continue
 
-        pred_boxes = pred[:, :4] / CONFIG["image_size"]
+        pred_boxes = pred[:, :4] / image_scale_wh(CONFIG["image_size"])
         pred_labels = pred[:, 5]
 
         gt_boxes = xywh2xyxy(gt[:, 1:])
@@ -138,7 +138,7 @@ def confusion_matrix_metric_from_predictions(y_preds: np.ndarray, targets: np.nd
         gt_bbox = xywh2xyxy(gt[:, 1:])
         gt_labels = gt[:, 0]
 
-        pred_boxes = pred[:, :4] / CONFIG["image_size"]
+        pred_boxes = pred[:, :4] / image_scale_wh(CONFIG["image_size"])
 
         if pred.shape[0] != 0 and gt_bbox.shape[0] != 0:
             ious = box_iou(gt_bbox, pred_boxes).numpy().T
