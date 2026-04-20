@@ -2,8 +2,8 @@
 Generate a minimal YOLOv5-format mock dataset for integration testing.
 
 Layout produced:
-  <root>/images/{train,val}/img_XXXX.jpg
-  <root>/labels/{train,val}/img_XXXX.txt
+  <root>/images/{train,val,test}/img_XXXX.jpg
+  <root>/labels/{train,val,test}/img_XXXX.txt
 
 Label format (one row per object):  class_id  cx  cy  w  h  (all normalised 0-1)
 """
@@ -18,6 +18,7 @@ from PIL import Image
 NUM_CLASSES = 10
 TRAIN_COUNT = 10
 VAL_COUNT = 5
+TEST_COUNT = 3
 MAX_OBJECTS = 4
 IMG_W, IMG_H = 640, 480
 SEED = 42
@@ -71,6 +72,7 @@ def main():
     print(f"Creating mock dataset at: {root}")
     write_split(root, "train", TRAIN_COUNT)
     write_split(root, "val", VAL_COUNT)
+    write_split(root, "test", TEST_COUNT)
     print("Done.")
 
 

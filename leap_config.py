@@ -61,7 +61,7 @@ def resolve_dataset_path(config: Dict[str, Any], data_config: Dict[str, Any]) ->
 
     for candidate in dataset_path_candidates:
         if all(_split_paths_exist(candidate, split_value) for split_value in _required_dataset_splits(data_config)):
-            return candidate
+            return abs_path_from_root(candidate)
 
     attempted_paths = [abs_path_from_root(candidate) for candidate in dataset_path_candidates]
     raise FileNotFoundError(
