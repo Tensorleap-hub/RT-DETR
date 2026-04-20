@@ -50,3 +50,12 @@ check_subset_index: 0
 check_sample_index: 0
 dataset_download_url: "https://github.com/ultralytics/yolov5/releases/download/v1.0/coco128.zip"
 dataset_extract_dir: "data"
+
+# class_scores format — uncomment to switch to per-class score model
+# model_output_format: "class_scores"
+# image_size: [1088, 1920]
+# model_path: "simon_model.onnx"
+# output_indices:
+#   boxes: 0
+#   scores: 1
+#   logits: 2

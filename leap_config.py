@@ -10,6 +10,7 @@ SUPPORTED_MODEL_OUTPUT_FORMATS = {
     "rtdetr_raw",
     "detections",
     "detections_concat_scores",
+    "class_scores",
 }
 
 ROOT = Path(__file__).resolve().parent

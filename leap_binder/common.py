@@ -7,6 +7,14 @@ from leap_config import CONFIG, DATA_CONFIG, abs_path_from_root
 from utils.general import non_max_suppression
 
 
+def image_scale_wh(image_size) -> np.ndarray:
+    if isinstance(image_size, (list, tuple)) and len(image_size) == 2:
+        h, w = image_size
+    else:
+        h = w = int(image_size)
+    return np.array([w, h, w, h], dtype=np.float32)
+
+
 def split_boxes_and_scores_from_concat(boxes_with_scores: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     boxes_with_scores = np.asarray(boxes_with_scores)
     if boxes_with_scores.shape[-1] < 5:
@@ -16,7 +24,13 @@ def split_boxes_and_scores_from_concat(boxes_with_scores: np.ndarray) -> tuple[n
     return boxes_with_scores[..., :4], boxes_with_scores[..., 4]
 
 
-def format_rtdetr_predictions(labels: np.ndarray, boxes_xyxy: np.ndarray, scores: np.ndarray) -> np.ndarray:
+def format_rtdetr_predictions(
+    labels: np.ndarray,
+    boxes_xyxy: np.ndarray,
+    scores: np.ndarray,
+    *,
+    _score_threshold: float = None,
+) -> np.ndarray:
     labels = np.asarray(labels).squeeze()
     boxes_xyxy = np.asarray(boxes_xyxy).squeeze()
     scores = np.asarray(scores).squeeze()
@@ -28,7 +42,7 @@ def format_rtdetr_predictions(labels: np.ndarray, boxes_xyxy: np.ndarray, scores
     if boxes_xyxy.ndim == 1:
         boxes_xyxy = boxes_xyxy.reshape(1, -1)
 
-    score_threshold = float(CONFIG.get("score_threshold", 0.3))
+    score_threshold = _score_threshold if _score_threshold is not None else float(CONFIG.get("score_threshold", 0.3))
     max_detections = int(CONFIG.get("max_detections", 300))
     keep = scores >= score_threshold
     labels = labels[keep]
@@ -49,6 +63,26 @@ def format_rtdetr_predictions(labels: np.ndarray, boxes_xyxy: np.ndarray, scores
 def format_rtdetr_concat_predictions(labels: np.ndarray, boxes_with_scores: np.ndarray) -> np.ndarray:
     boxes_xyxy, scores = split_boxes_and_scores_from_concat(boxes_with_scores)
     return format_rtdetr_predictions(labels, boxes_xyxy, scores)
+
+
+def format_class_scores_predictions(
+    boxes_xyxy: np.ndarray,
+    scores_per_class: np.ndarray,
+    score_threshold: float = None,
+) -> np.ndarray:
+    boxes_xyxy = np.asarray(boxes_xyxy).squeeze()
+    scores_per_class = np.asarray(scores_per_class).squeeze()
+
+    if boxes_xyxy.ndim == 1:
+        boxes_xyxy = boxes_xyxy.reshape(1, -1)
+    if scores_per_class.ndim == 1:
+        scores_per_class = scores_per_class.reshape(1, -1)
+
+    scalar_scores = scores_per_class.max(axis=-1)
+    labels = scores_per_class.argmax(axis=-1).astype(np.float32)
+
+    return format_rtdetr_predictions(labels, boxes_xyxy, scalar_scores,
+                                     _score_threshold=score_threshold)
 
 
 def prediction_rows(y_preds: np.ndarray) -> List[torch.Tensor]:

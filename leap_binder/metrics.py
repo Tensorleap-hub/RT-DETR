@@ -8,7 +8,7 @@ from leap_utils import compute_accuracy, compute_iou, compute_precision_recall_f
 from utils.general import xywh2xyxy
 from utils.metrics import box_iou
 
-from .common import CONFIG, format_rtdetr_concat_predictions, format_rtdetr_predictions, label_names, prediction_rows
+from .common import CONFIG, format_class_scores_predictions, format_rtdetr_concat_predictions, format_rtdetr_predictions, label_names, prediction_rows
 
 
 def _batched_targets(targets: np.ndarray) -> np.ndarray:
@@ -106,6 +106,24 @@ def get_per_sample_metrics_concat_scores(labels, boxes_with_scores, targets: np.
     return get_per_sample_metrics_from_predictions(y_preds, targets)
 
 
+@tensorleap_custom_metric(
+    name="per_sample_metrics_class_scores",
+    direction={
+        "precision": MetricDirection.Upward,
+        "recall": MetricDirection.Upward,
+        "f1": MetricDirection.Upward,
+        "FP": MetricDirection.Downward,
+        "TP": MetricDirection.Upward,
+        "FN": MetricDirection.Downward,
+        "iou": MetricDirection.Upward,
+        "accuracy": MetricDirection.Upward,
+    },
+)
+def get_per_sample_metrics_class_scores(boxes_xyxy: np.ndarray, scores_per_class: np.ndarray, targets: np.ndarray):
+    y_preds = format_class_scores_predictions(boxes_xyxy, scores_per_class)
+    return get_per_sample_metrics_from_predictions(y_preds, targets)
+
+
 def confusion_matrix_metric_from_predictions(y_preds: np.ndarray, targets: np.ndarray):
     threshold = 0.1
     confusion_matrices = []
@@ -167,4 +185,10 @@ def confusion_matrix_metric(labels: np.ndarray, boxes_xyxy: np.ndarray, scores: 
 @tensorleap_custom_metric("Confusion Matrix Concat Scores")
 def confusion_matrix_metric_concat_scores(labels: np.ndarray, boxes_with_scores: np.ndarray, targets: np.ndarray):
     y_preds = format_rtdetr_concat_predictions(labels, boxes_with_scores)
+    return confusion_matrix_metric_from_predictions(y_preds, targets)
+
+
+@tensorleap_custom_metric("Confusion Matrix Class Scores")
+def confusion_matrix_metric_class_scores(boxes_xyxy: np.ndarray, scores_per_class: np.ndarray, targets: np.ndarray):
+    y_preds = format_class_scores_predictions(boxes_xyxy, scores_per_class)
     return confusion_matrix_metric_from_predictions(y_preds, targets)

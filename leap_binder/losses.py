@@ -18,6 +18,7 @@ from leap_utils import compute_iou, compute_precision_recall_f1_fp_tp_fn
 from .common import (
     COCO_CATEGORY_TO_LABEL,
     CONFIG,
+    format_class_scores_predictions,
     format_rtdetr_concat_predictions,
     format_rtdetr_predictions,
     prediction_rows,
@@ -224,6 +225,26 @@ def detection_f1_loss_concat_scores(
     targets: np.ndarray,
 ) -> np.ndarray:
     losses = compute_detection_losses(targets, y_preds=format_rtdetr_concat_predictions(labels, boxes_with_scores))
+    return losses["f1_loss"]
+
+
+@tensorleap_custom_loss("detection_iou_loss_class_scores")
+def detection_iou_loss_class_scores(
+    boxes_xyxy: np.ndarray,
+    scores_per_class: np.ndarray,
+    targets: np.ndarray,
+) -> np.ndarray:
+    losses = compute_detection_losses(targets, y_preds=format_class_scores_predictions(boxes_xyxy, scores_per_class))
+    return losses["iou_loss"]
+
+
+@tensorleap_custom_loss("detection_f1_loss_class_scores")
+def detection_f1_loss_class_scores(
+    boxes_xyxy: np.ndarray,
+    scores_per_class: np.ndarray,
+    targets: np.ndarray,
+) -> np.ndarray:
+    losses = compute_detection_losses(targets, y_preds=format_class_scores_predictions(boxes_xyxy, scores_per_class))
     return losses["f1_loss"]
 
 
