@@ -10,7 +10,9 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent
 VENDOR_RTDETR_V1_ROOT = ROOT / "vendor" / "RT-DETR" / "rtdetr_pytorch"
+VENDOR_RTDETR_V2_ROOT = ROOT / "vendor" / "RT-DETR" / "rtdetrv2_pytorch"
 sys.path.insert(0, str(VENDOR_RTDETR_V1_ROOT))
+sys.path.insert(0, str(VENDOR_RTDETR_V2_ROOT))
 
 from src.core import YAMLConfig  # noqa: E402
 
@@ -37,16 +39,13 @@ def build_model(args):
     update_dict = parse_cli_updates(args.update)
     cfg = YAMLConfig(args.config, **update_dict)
 
-    if not args.resume:
-        raise ValueError("A checkpoint path is required for RT-DETR v1 export.")
-
-    checkpoint = torch.load(args.resume, map_location="cpu")
-    if "ema" in checkpoint:
-        state = checkpoint["ema"]["module"]
-    else:
-        state = checkpoint["model"]
-
-    cfg.model.load_state_dict(state)
+    if args.resume:
+        checkpoint = torch.load(args.resume, map_location="cpu")
+        if "ema" in checkpoint:
+            state = checkpoint["ema"]["module"]
+        else:
+            state = checkpoint["model"]
+        cfg.model.load_state_dict(state)
     return cfg
 
 
@@ -81,12 +80,6 @@ class ClientFormatModel(nn.Module):
     def __init__(self, cfg) -> None:
         super().__init__()
         self.model = cfg.model.deploy()
-        postproc = cfg.postprocessor
-        if getattr(postproc, 'use_focal_loss', False):
-            raise ValueError(
-                "ClientFormatModel requires use_focal_loss=False. "
-                "The client format uses softmax + background-class removal."
-            )
 
     def forward(self, images):
         outputs = self.model(images)
@@ -202,7 +195,7 @@ def export(args):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", "-c", type=str, required=True)
-    parser.add_argument("--resume", "-r", type=str, required=True)
+    parser.add_argument("--resume", "-r", type=str, required=False)
     parser.add_argument("--output-file", "--file-name", "-o", "-f", dest="output_file", type=str, default="model.onnx")
     parser.add_argument("--input-size", "-s", type=int, default=640)
     parser.add_argument("--batch-size", "-b", type=int, default=1)
