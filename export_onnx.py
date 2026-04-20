@@ -80,6 +80,8 @@ class ClientFormatModel(nn.Module):
     def __init__(self, cfg) -> None:
         super().__init__()
         self.model = cfg.model.deploy()
+        self.model.encoder.eval_spatial_size = None
+        self.model.decoder.eval_spatial_size = None
 
     def forward(self, images):
         outputs = self.model(images)
