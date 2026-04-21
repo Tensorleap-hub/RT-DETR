@@ -46,7 +46,11 @@ def load_model():
     model_path = abs_path_from_root(CONFIG["model_path"])
     if not model_path.endswith(".onnx"):
         raise ValueError("Only ONNX is supported in this integration file.")
-    return ort.InferenceSession(model_path)
+    session = ort.InferenceSession(model_path)
+    model_input = session.get_inputs()[0]
+    CONFIG["_model_input_name"] = model_input.name
+    CONFIG["_model_input_hw"] = [model_input.shape[2], model_input.shape[3]]
+    return session
 
 
 @tensorleap_integration_test()
@@ -58,7 +62,8 @@ def check_integration(idx, subset):
     _ = gt_labels_encoder(idx, subset)
     _ = gt_valid_mask_encoder(idx, subset)
 
-    predictions = model.run(None, {"images": image})
+    input_name = model.get_inputs()[0].name
+    predictions = model.run(None, {input_name: image})
 
     boxes_output = predictions[OUTPUT_INDICES["boxes"]]
     scores = predictions[OUTPUT_INDICES["scores"]]
