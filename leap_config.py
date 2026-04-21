@@ -3,7 +3,7 @@ import os
 import posixpath
 import yaml
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Tuple
 
 
 SUPPORTED_MODEL_OUTPUT_FORMATS = {
@@ -68,6 +68,24 @@ def resolve_dataset_path(config: Dict[str, Any], data_config: Dict[str, Any]) ->
         "Dataset not found in any configured dataset_path. "
         f"Attempted roots: {attempted_paths}"
     )
+
+def resolve_coco_paths(config: Dict[str, Any]) -> Tuple[str, Dict[str, str]]:
+    annotation_files = config.get("annotation_file", {})
+    if isinstance(annotation_files, str):
+        annotation_files = {"val": annotation_files}
+    candidates = _as_path_candidates(config.get("dataset_path"))
+    for candidate in candidates:
+        root = abs_path_from_root(candidate)
+        found = {
+            split: os.path.join(root, fname)
+            for split, fname in annotation_files.items()
+            if os.path.exists(os.path.join(root, fname))
+        }
+        if found:
+            return root, found
+    attempted = [abs_path_from_root(c) for c in candidates]
+    raise FileNotFoundError(f"No COCO annotation files found in any dataset_path candidate. Tried: {attempted}")
+
 
 def load_yaml(path) -> Dict[str, Any]:
     file_path = abs_path_from_root(path)

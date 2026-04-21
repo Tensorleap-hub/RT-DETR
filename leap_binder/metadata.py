@@ -4,8 +4,6 @@ import numpy as np
 from code_loader.contract.datasetclasses import PreprocessResponse
 from code_loader.inner_leap_binder.leapbinder_decorators import tensorleap_metadata
 
-from .common import DATA_CONFIG
-
 
 def average_dist_nn(boxes: np.ndarray) -> float:
     if len(boxes) < 2:
@@ -26,33 +24,33 @@ def _safe_stat(values: np.ndarray, reducer) -> float:
 
 @tensorleap_metadata("metadata")
 def sample_metadata(idx: int, preprocessing: PreprocessResponse) -> dict:
-    sample = preprocessing.data[idx]
-    image = (sample[0].numpy().transpose(1, 2, 0) * 255).astype(np.uint8)
-    gt = sample[1].numpy()
+    data = preprocessing.data
+    img_meta = data["images"][idx]
+    annotations = data["anns"].get(img_meta["id"], [])
+    categories = data.get("categories", {})
 
-    if gt.shape[0] != 0:
-        gt_class = gt[:, 1]
-        gt_bbox = gt[:, 2:]
-        bbox_areas = gt_bbox[:, 2] * gt_bbox[:, 3]
-        bbox_cx = gt_bbox[:, 0]
-        bbox_cy = gt_bbox[:, 1]
-    else:
-        gt_class, bbox_areas, bbox_cx, bbox_cy = np.array([]), np.array([]), np.array([]), np.array([])
-
-    unique_classes, class_counts = np.unique(gt_class, return_counts=True)
-    labels = DATA_CONFIG.get("pred_names", DATA_CONFIG.get("names", []))
-    class_count_map = {int(cls): int(cnt) for cls, cnt in zip(unique_classes, class_counts)}
-    per_label_counts = {
-        f"# of {label}": float(class_count_map[label_idx]) if label_idx in class_count_map else float(np.nan)
-        for label_idx, label in enumerate(labels)
-    }
-
+    image_path = f"{data['root']}/{img_meta['file_name']}"
+    image = cv2.imread(image_path)
     laplacian = cv2.Laplacian(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), cv2.CV_64F)
     sharpness = laplacian.var()
-    metadata_dict = {
+
+    img_w, img_h = img_meta["width"], img_meta["height"]
+    cat_ids = np.array([ann["category_id"] for ann in annotations], dtype=np.float32)
+    bbox_cx = np.array([(ann["bbox"][0] + ann["bbox"][2] / 2) / img_w for ann in annotations], dtype=np.float32)
+    bbox_cy = np.array([(ann["bbox"][1] + ann["bbox"][3] / 2) / img_h for ann in annotations], dtype=np.float32)
+    bbox_areas = np.array([(ann["bbox"][2] * ann["bbox"][3]) / (img_w * img_h) for ann in annotations], dtype=np.float32)
+
+    unique_classes, class_counts = np.unique(cat_ids, return_counts=True)
+    class_count_map = {int(cls): int(cnt) for cls, cnt in zip(unique_classes, class_counts)}
+    per_label_counts = {
+        f"# of {name}": float(class_count_map.get(cat_id, 0))
+        for cat_id, name in categories.items()
+    }
+
+    return {
         "image_sharpness": float(sharpness),
-        "# of objects": gt.shape[0],
-        "# of unique objects": len(unique_classes),
+        "# of objects": len(annotations),
+        "# of unique classes": int(len(unique_classes)),
         "bbox area mean": _safe_stat(bbox_areas, np.mean),
         "bbox area median": _safe_stat(bbox_areas, np.median),
         "bbox area min": _safe_stat(bbox_areas, np.min),
@@ -71,4 +69,3 @@ def sample_metadata(idx: int, preprocessing: PreprocessResponse) -> dict:
         "bbox center var": _safe_stat(bbox_cy, np.var) + _safe_stat(bbox_cx, np.var),
         **per_label_counts,
     }
-    return metadata_dict

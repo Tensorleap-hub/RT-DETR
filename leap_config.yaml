@@ -9,6 +9,7 @@ dataset_autodownload: False
 # `dataset_path` can be a single root or an ordered list of candidate roots.
 # The integration uses the first root that contains the configured split data.
 dataset_path:
+  - "~/tensorleap/data/rheinmetall-mock"
   - "~/tensorleap/data/visdrone128"
   - "C:\\data\\visdrone128"
   - "/Users/orram/Tensorleap/data/visdrone128"
@@ -43,9 +44,19 @@ loss:
     alpha: 0.25
     gamma: 2.0
 
+annotation_file:
+  train: "annotations_train.json"
+  val: "annotations_val.json"
+  test: "annotations_test.json"
+
+s3:
+  enabled: false
+  bucket_name: ""
+  prefix: ""
+
 score_threshold: 0.3
 max_detections: 300
-plot_visualizers: false
+plot_visualizers: true
 check_subset_index: 0
 check_sample_index: 0
 dataset_download_url: "https://github.com/ultralytics/yolov5/releases/download/v1.0/coco128.zip"
