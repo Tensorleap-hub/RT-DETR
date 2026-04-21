@@ -1,5 +1,7 @@
-from typing import List
+import json
+from typing import Dict, List
 
+import cv2
 import numpy as np
 
 from code_loader.contract.datasetclasses import PreprocessResponse
@@ -8,114 +10,112 @@ from code_loader.inner_leap_binder.leapbinder_decorators import (
     tensorleap_input_encoder,
     tensorleap_preprocess,
 )
-from utils.dataloaders import create_dataloader
-from utils.general import check_dataset, colorstr
+from leap_config import resolve_coco_paths
 
-from .common import CONFIG, DATA_CONFIG
+from .aws_utils import download_file_if_missing
+from .common import CONFIG
+
+
+def _load_coco(annotation_path: str, dataset_root: str) -> Dict:
+    with open(annotation_path) as f:
+        coco = json.load(f)
+    images = coco["images"]
+    for img in images:
+        img["file_name"] = img["file_name"].replace("\\", "/")
+    anns: Dict[int, List] = {}
+    for ann in coco.get("annotations", []):
+        anns.setdefault(ann["image_id"], []).append(ann)
+    categories = {cat["id"]: cat["name"] for cat in coco.get("categories", [])}
+    return {"images": images, "anns": anns, "root": dataset_root, "categories": categories}
 
 
 @tensorleap_preprocess()
 def preprocess_func_leap() -> List[PreprocessResponse]:
-    data = check_dataset(dict(DATA_CONFIG), autodownload=bool(CONFIG.get("dataset_autodownload", False)))
-
+    dataset_root, annotation_paths = resolve_coco_paths(CONFIG)
     responses = []
-    split_order = [split for split in ["train", "val", "test"] if split in data]
-    if not split_order:
-        raise ValueError(f"No supported splits found in dataset config: {CONFIG['data_yaml_path']}")
-    for split in split_order:
-        _, dataset = create_dataloader(
-            data[split],
-            imgsz=CONFIG["image_size"],
-            batch_size=1,
-            stride=32,
-            single_cls=False,
-            rect=False,
-            workers=1,
-            prefix=colorstr(f"{split}: "),
-            shuffle=False,
-        )
-        responses.append(PreprocessResponse(data=dataset, length=len(dataset)))
+    for split in ["train", "val", "test"]:
+        if split not in annotation_paths:
+            continue
+        data = _load_coco(annotation_paths[split], dataset_root)
+        responses.append(PreprocessResponse(data=data, length=len(data["images"])))
+    if not responses:
+        raise ValueError("No COCO annotation files found for any split")
     return responses
 
 
 @tensorleap_input_encoder("image", channel_dim=1)
 def input_encoder(idx: int, preprocess: PreprocessResponse) -> np.ndarray:
-    image = preprocess.data[idx][0].numpy().astype(np.float32) / 255
-    return image
+    data = preprocess.data
+    img_meta = data["images"][idx]
+    image_path = f"{data['root']}/{img_meta['file_name']}"
+
+    s3_config = CONFIG.get("s3", {})
+    if s3_config.get("enabled"):
+        s3_key = f"{s3_config['prefix']}/{img_meta['file_name']}"
+        download_file_if_missing(s3_config["bucket_name"], s3_key, image_path)
+
+    image_size = CONFIG["image_size"]
+    img = cv2.imread(image_path)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = cv2.resize(img, (image_size[1], image_size[0]))
+    img = img.astype(np.float32) / 255.0
+    return img.transpose(2, 0, 1)
 
 
 @tensorleap_input_encoder("orig_size", channel_dim=1)
 def input_size_encoder(idx: int, preprocess: PreprocessResponse) -> np.ndarray:
-    image_size = CONFIG["image_size"]
-    return np.array([image_size, image_size], dtype=np.float32)
+    img_meta = preprocess.data["images"][idx]
+    return np.array([img_meta["height"], img_meta["width"]], dtype=np.float32)
 
 
 def _padded_gt_for_sample(idx: int, preprocessing: PreprocessResponse) -> np.ndarray:
-    mask = preprocessing.data.batch == idx
-    img_size = preprocessing.data.img_size
+    data = preprocessing.data
+    img_meta = data["images"][idx]
+    annotations = data["anns"].get(img_meta["id"], [])
     max_num_of_objs = int(CONFIG["max_num_of_objects"])
-    labels_arr = []
+    img_w = img_meta["width"]
+    img_h = img_meta["height"]
 
-    for i, is_selected in enumerate(mask):
-        if not is_selected:
-            continue
-        labels = preprocessing.data.labels[i]
-        cls = np.expand_dims(labels[:, 0], axis=1)
-        x = np.expand_dims(labels[:, 1], axis=1)
-        y = np.expand_dims(labels[:, 2], axis=1)
-        w = np.expand_dims(labels[:, 3], axis=1)
-        h = np.expand_dims(labels[:, 4], axis=1)
+    rows = []
+    for ann in annotations:
+        x, y, w, h = ann["bbox"]
+        cx = (x + w / 2) / img_w
+        cy = (y + h / 2) / img_h
+        nw = w / img_w
+        nh = h / img_h
+        rows.append([float(ann["category_id"]), cx, cy, nw, nh])
 
-        if not preprocessing.data.rect:
-            original_w, original_h = preprocessing.data.shapes[i]
-            if original_w > original_h:
-                new_h = original_h * img_size / original_w
-                pad_size = img_size - new_h
-                y = (y * new_h + (pad_size / 2)) / img_size
-                h = h * new_h / img_size
-            else:
-                new_w = original_w * img_size / original_h
-                pad_size = img_size - new_w
-                x = (x * new_w + (pad_size / 2)) / img_size
-                w = w * new_w / img_size
-
-        adjusted = np.concatenate([cls, x, y, w, h], axis=1).astype(np.float32)
-        if adjusted.shape[0] < max_num_of_objs:
-            pad_rows = max_num_of_objs - adjusted.shape[0]
-            pad = np.full((pad_rows, adjusted.shape[1]), -1, dtype=np.float32)
-            adjusted = np.vstack([adjusted, pad])
-        elif adjusted.shape[0] > max_num_of_objs:
-            adjusted = adjusted[:max_num_of_objs, :]
-
-        labels_arr.append(adjusted)
-
-    if not labels_arr:
+    if not rows:
         return np.full((max_num_of_objs, 5), -1, dtype=np.float32)
-    return np.array(labels_arr, dtype=np.float32).squeeze(0)
+
+    gt = np.array(rows, dtype=np.float32)
+    if gt.shape[0] < max_num_of_objs:
+        pad = np.full((max_num_of_objs - gt.shape[0], 5), -1, dtype=np.float32)
+        gt = np.vstack([gt, pad])
+    else:
+        gt = gt[:max_num_of_objs]
+    return gt
 
 
 @tensorleap_gt_encoder("classes")
 def gt_encoder(idx: int, preprocessing: PreprocessResponse) -> np.ndarray:
-    return _padded_gt_for_sample(idx, preprocessing).astype(np.float32)
+    return _padded_gt_for_sample(idx, preprocessing)
 
 
 @tensorleap_gt_encoder("gt_boxes")
 def gt_boxes_encoder(idx: int, preprocessing: PreprocessResponse) -> np.ndarray:
     gt = _padded_gt_for_sample(idx, preprocessing)
     boxes = gt[:, 1:5].copy()
-    invalid = gt[:, 0] < 0
-    boxes[invalid] = 0.0
-    return boxes.astype(np.float32)
+    boxes[gt[:, 0] < 0] = 0.0
+    return boxes
 
 
 @tensorleap_gt_encoder("gt_labels")
 def gt_labels_encoder(idx: int, preprocessing: PreprocessResponse) -> np.ndarray:
-    gt = _padded_gt_for_sample(idx, preprocessing)
-    return gt[:, 0].astype(np.float32)
+    return _padded_gt_for_sample(idx, preprocessing)[:, 0]
 
 
 @tensorleap_gt_encoder("gt_valid_mask")
 def gt_valid_mask_encoder(idx: int, preprocessing: PreprocessResponse) -> np.ndarray:
     gt = _padded_gt_for_sample(idx, preprocessing)
-    valid = (gt[:, 0] >= 0).astype(np.float32)
-    return valid
+    return (gt[:, 0] >= 0).astype(np.float32)

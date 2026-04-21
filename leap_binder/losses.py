@@ -18,8 +18,10 @@ from leap_utils import compute_iou, compute_precision_recall_f1_fp_tp_fn
 from .common import (
     COCO_CATEGORY_TO_LABEL,
     CONFIG,
+    format_class_scores_predictions,
     format_rtdetr_concat_predictions,
     format_rtdetr_predictions,
+    image_scale_wh,
     prediction_rows,
 )
 
@@ -153,7 +155,7 @@ def compute_detection_losses(targets: np.ndarray, *, y_preds: np.ndarray) -> Dic
             f1_losses.append(1.0)
             continue
 
-        pred_boxes = pred[:, :4] / CONFIG["image_size"]
+        pred_boxes = pred[:, :4] / image_scale_wh(CONFIG["image_size"])
         gt_boxes = xywh2xyxy(gt[:, 1:])
         _, _, f1, _, _, _ = compute_precision_recall_f1_fp_tp_fn(gt_boxes, pred_boxes, iou_threshold=0.1)
         iou = compute_iou(gt_boxes, pred_boxes)
@@ -224,6 +226,26 @@ def detection_f1_loss_concat_scores(
     targets: np.ndarray,
 ) -> np.ndarray:
     losses = compute_detection_losses(targets, y_preds=format_rtdetr_concat_predictions(labels, boxes_with_scores))
+    return losses["f1_loss"]
+
+
+@tensorleap_custom_loss("detection_iou_loss_class_scores")
+def detection_iou_loss_class_scores(
+    boxes_xyxy: np.ndarray,
+    scores_per_class: np.ndarray,
+    targets: np.ndarray,
+) -> np.ndarray:
+    losses = compute_detection_losses(targets, y_preds=format_class_scores_predictions(boxes_xyxy, scores_per_class))
+    return losses["iou_loss"]
+
+
+@tensorleap_custom_loss("detection_f1_loss_class_scores")
+def detection_f1_loss_class_scores(
+    boxes_xyxy: np.ndarray,
+    scores_per_class: np.ndarray,
+    targets: np.ndarray,
+) -> np.ndarray:
+    losses = compute_detection_losses(targets, y_preds=format_class_scores_predictions(boxes_xyxy, scores_per_class))
     return losses["f1_loss"]
 
 

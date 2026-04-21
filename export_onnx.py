@@ -2,14 +2,19 @@ import argparse
 import sys
 from pathlib import Path
 
+import numpy as np
+import onnx
 import torch
 import torch.nn as nn
+import torchvision
 import yaml
 
 
 ROOT = Path(__file__).resolve().parent
 VENDOR_RTDETR_V1_ROOT = ROOT / "vendor" / "RT-DETR" / "rtdetr_pytorch"
+VENDOR_RTDETR_V2_ROOT = ROOT / "vendor" / "RT-DETR" / "rtdetrv2_pytorch"
 sys.path.insert(0, str(VENDOR_RTDETR_V1_ROOT))
+sys.path.insert(0, str(VENDOR_RTDETR_V2_ROOT))
 
 from src.core import YAMLConfig  # noqa: E402
 
@@ -36,16 +41,13 @@ def build_model(args):
     update_dict = parse_cli_updates(args.update)
     cfg = YAMLConfig(args.config, **update_dict)
 
-    if not args.resume:
-        raise ValueError("A checkpoint path is required for RT-DETR v1 export.")
-
-    checkpoint = torch.load(args.resume, map_location="cpu")
-    if "ema" in checkpoint:
-        state = checkpoint["ema"]["module"]
-    else:
-        state = checkpoint["model"]
-
-    cfg.model.load_state_dict(state)
+    if args.resume:
+        checkpoint = torch.load(args.resume, map_location="cpu")
+        if "ema" in checkpoint:
+            state = checkpoint["ema"]["module"]
+        else:
+            state = checkpoint["model"]
+        cfg.model.load_state_dict(state)
     return cfg
 
 
@@ -76,6 +78,29 @@ class ExportModel(nn.Module):
         return labels, boxes, scores
 
 
+class ClientFormatModel(nn.Module):
+    def __init__(self, cfg) -> None:
+        super().__init__()
+        self.model = cfg.model.deploy()
+        self.model.encoder.eval_spatial_size = None
+        self.model.decoder.eval_spatial_size = None
+
+    def forward(self, images):
+        outputs = self.model(images)
+        pred_logits = outputs["pred_logits"]
+        pred_boxes = outputs["pred_boxes"]
+
+        h, w = images.shape[-2], images.shape[-1]
+        boxes = torchvision.ops.box_convert(pred_boxes, in_fmt="cxcywh", out_fmt="xyxy")
+        scale = torch.tensor([w, h, w, h], dtype=boxes.dtype, device=boxes.device)
+        boxes = boxes * scale
+
+        logits = pred_logits[:, :, :-1]
+        scores = torch.softmax(pred_logits, dim=-1)[:, :, :-1]
+
+        return boxes, scores, logits
+
+
 def output_names(args):
     if args.concat_output and args.loss_outputs:
         return ["labels", "boxes", "pred_logits", "pred_boxes"]
@@ -96,8 +121,49 @@ def dynamic_axes(args):
     return axes
 
 
+def _fix_double_constants(path):
+    m = onnx.load(path)
+    for node in m.graph.node:
+        if node.op_type == "Constant":
+            for attr in node.attribute:
+                if attr.HasField("t") and attr.t.data_type == onnx.TensorProto.DOUBLE:
+                    arr = np.array(onnx.numpy_helper.to_array(attr.t), dtype=np.float32)
+                    attr.t.CopyFrom(onnx.numpy_helper.from_array(arr))
+    onnx.save(m, path)
+
+
 def export(args):
     cfg = build_model(args)
+
+    if args.client_format:
+        h = args.input_height or args.input_size
+        w = args.input_width or args.input_size
+        model = ClientFormatModel(cfg)
+        model.eval()
+        data = torch.rand(args.batch_size, 3, h, w)
+        _ = model(data)
+        export_kwargs = {}
+        if args.dynamic:
+            export_kwargs["dynamic_axes"] = {
+                "images": {0: "batch"},
+                "boxes": {0: "batch"},
+                "scores": {0: "batch"},
+                "logits": {0: "batch"},
+            }
+        torch.onnx.export(
+            model,
+            (data,),
+            args.output_file,
+            input_names=["images"],
+            output_names=["boxes", "scores", "logits"],
+            opset_version=16,
+            verbose=False,
+            do_constant_folding=True,
+            **export_kwargs,
+        )
+        _fix_double_constants(args.output_file)
+        return
+
     model = ExportModel(cfg, concat_output=args.concat_output, loss_outputs=args.loss_outputs)
     model.eval()
 
@@ -145,7 +211,7 @@ def export(args):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", "-c", type=str, required=True)
-    parser.add_argument("--resume", "-r", type=str, required=True)
+    parser.add_argument("--resume", "-r", type=str, required=False)
     parser.add_argument("--output-file", "--file-name", "-o", "-f", dest="output_file", type=str, default="model.onnx")
     parser.add_argument("--input-size", "-s", type=int, default=640)
     parser.add_argument("--batch-size", "-b", type=int, default=1)
@@ -163,6 +229,12 @@ def parse_args():
         default=False,
         help="Also export raw pred_logits and pred_boxes for loss computation",
     )
+    parser.add_argument("--client-format", action="store_true", default=False,
+                        help="Export in Rheinmetall client format: boxes, scores[B,N,C], logits[B,N,C]")
+    parser.add_argument("--input-height", type=int, default=None,
+                        help="Input image height for non-square inputs")
+    parser.add_argument("--input-width", type=int, default=None,
+                        help="Input image width for non-square inputs")
     parser.add_argument("--update", "-u", nargs="+", help="update yaml config")
     parser.set_defaults(dynamic=True)
     parser.add_argument(
