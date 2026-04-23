@@ -32,12 +32,12 @@ def _load_coco(annotation_path: str, dataset_root: str) -> Dict:
 
 @tensorleap_preprocess()
 def preprocess_func_leap() -> List[PreprocessResponse]:
-    dataset_root, annotation_paths = resolve_coco_paths(CONFIG)
+    split_roots, annotation_paths = resolve_coco_paths(CONFIG)
     responses = []
     for split in ["train", "val", "test"]:
         if split not in annotation_paths:
             continue
-        data = _load_coco(annotation_paths[split], dataset_root)
+        data = _load_coco(annotation_paths[split], split_roots[split])
         responses.append(PreprocessResponse(data=data, length=len(data["images"])))
     if not responses:
         raise ValueError("No COCO annotation files found for any split")

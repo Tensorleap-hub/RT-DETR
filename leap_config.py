@@ -69,7 +69,7 @@ def resolve_dataset_path(config: Dict[str, Any], data_config: Dict[str, Any]) ->
         f"Attempted roots: {attempted_paths}"
     )
 
-def resolve_coco_paths(config: Dict[str, Any]) -> Tuple[str, Dict[str, str]]:
+def resolve_coco_paths(config: Dict[str, Any]) -> Tuple[Dict[str, str], Dict[str, str]]:
     annotation_files = config.get("annotation_file", {})
     if isinstance(annotation_files, str):
         annotation_files = {"val": annotation_files}
@@ -82,7 +82,8 @@ def resolve_coco_paths(config: Dict[str, Any]) -> Tuple[str, Dict[str, str]]:
             if os.path.exists(os.path.join(root, fname))
         }
         if found:
-            return root, found
+            roots = {split: os.path.dirname(path) for split, path in found.items()}
+            return roots, found
     attempted = [abs_path_from_root(c) for c in candidates]
     raise FileNotFoundError(f"No COCO annotation files found in any dataset_path candidate. Tried: {attempted}")
 
