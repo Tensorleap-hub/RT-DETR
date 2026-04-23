@@ -57,7 +57,8 @@ def get_per_sample_metrics_from_predictions(y_preds: np.ndarray, targets: np.nda
             _update_metrics(metrics, 0, np.nan, 0, pred.shape[0], 0, 0, 0, 0)
             continue
 
-        pred_boxes = pred[:, :4] / image_scale_wh(CONFIG["image_size"])
+        model_input_hw = CONFIG.get("_model_input_hw", CONFIG["image_size"])
+        pred_boxes = pred[:, :4] / image_scale_wh(model_input_hw)
         pred_labels = pred[:, 5]
 
         gt_boxes = xywh2xyxy(gt[:, 1:])
@@ -138,7 +139,8 @@ def confusion_matrix_metric_from_predictions(y_preds: np.ndarray, targets: np.nd
         gt_bbox = xywh2xyxy(gt[:, 1:])
         gt_labels = gt[:, 0]
 
-        pred_boxes = pred[:, :4] / image_scale_wh(CONFIG["image_size"])
+        model_input_hw = CONFIG.get("_model_input_hw", CONFIG["image_size"])
+        pred_boxes = pred[:, :4] / image_scale_wh(model_input_hw)
 
         if pred.shape[0] != 0 and gt_bbox.shape[0] != 0:
             ious = box_iou(gt_bbox, pred_boxes).numpy().T

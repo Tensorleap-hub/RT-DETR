@@ -24,6 +24,7 @@ model_type: "RTDETR"
 # - detections_concat_scores: labels, boxes where the last channel is score
 # - class_scores: boxes, scores[N,C], logits[N,C] — no labels output, no orig_target_sizes input
 model_output_format: "class_scores"
+boxes_in_cxcywh_format: false
 output_indices:
   boxes: 0
   scores: 1

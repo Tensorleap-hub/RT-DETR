@@ -65,23 +65,37 @@ def format_rtdetr_concat_predictions(labels: np.ndarray, boxes_with_scores: np.n
     return format_rtdetr_predictions(labels, boxes_xyxy, scores)
 
 
+def _bbox_cxcywh_to_xyxy(boxes: np.ndarray) -> np.ndarray:
+    half_w = boxes[:, 2] / 2
+    half_h = boxes[:, 3] / 2
+    return np.column_stack((
+        boxes[:, 0] - half_w,
+        boxes[:, 1] - half_h,
+        boxes[:, 0] + half_w,
+        boxes[:, 1] + half_h,
+    ))
+
+
 def format_class_scores_predictions(
-    boxes_xyxy: np.ndarray,
+    boxes: np.ndarray,
     scores_per_class: np.ndarray,
     score_threshold: float = None,
 ) -> np.ndarray:
-    boxes_xyxy = np.asarray(boxes_xyxy).squeeze()
+    boxes = np.asarray(boxes).squeeze()
     scores_per_class = np.asarray(scores_per_class).squeeze()
 
-    if boxes_xyxy.ndim == 1:
-        boxes_xyxy = boxes_xyxy.reshape(1, -1)
+    if boxes.ndim == 1:
+        boxes = boxes.reshape(1, -1)
     if scores_per_class.ndim == 1:
         scores_per_class = scores_per_class.reshape(1, -1)
+
+    if CONFIG.get("boxes_in_cxcywh_format", False):
+        boxes = _bbox_cxcywh_to_xyxy(boxes)
 
     scalar_scores = scores_per_class.max(axis=-1)
     labels = scores_per_class.argmax(axis=-1).astype(np.float32)
 
-    return format_rtdetr_predictions(labels, boxes_xyxy, scalar_scores,
+    return format_rtdetr_predictions(labels, boxes, scalar_scores,
                                      _score_threshold=score_threshold)
 
 

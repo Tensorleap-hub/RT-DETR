@@ -255,3 +255,6 @@ fabric.properties
 
 # Design docs
 docs/
+
+# Large model files
+*.onnx

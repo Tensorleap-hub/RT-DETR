@@ -1,4 +1,5 @@
 import json
+import os
 from typing import Dict, List
 
 import cv2
@@ -47,7 +48,7 @@ def preprocess_func_leap() -> List[PreprocessResponse]:
 def input_encoder(idx: int, preprocess: PreprocessResponse) -> np.ndarray:
     data = preprocess.data
     img_meta = data["images"][idx]
-    image_path = f"{data['root']}/{img_meta['file_name']}"
+    image_path = os.path.join(data["root"], img_meta["file_name"])
 
     s3_config = CONFIG.get("s3", {})
     if s3_config.get("enabled"):
