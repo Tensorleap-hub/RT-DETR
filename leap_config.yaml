@@ -24,8 +24,6 @@ model_type: "RTDETR"
 # - detections_concat_scores: labels, boxes where the last channel is score
 # - class_scores: boxes, scores[N,C], logits[N,C] — no labels output, no orig_target_sizes input
 model_output_format: "class_scores"
-# Set to true if the model outputs boxes in cxcywh format (raw RT-DETR models).
-# Set to false if the model already outputs xyxy (e.g. client_format_structure.onnx).
 boxes_in_cxcywh_format: false
 output_indices:
   boxes: 0
