@@ -39,7 +39,7 @@ _SPLIT_TO_STATE = {
 
 @tensorleap_preprocess()
 def preprocess_func_leap() -> List[PreprocessResponse]:
-    dataset_root, annotation_paths = resolve_coco_paths(CONFIG)
+    split_roots, annotation_paths = resolve_coco_paths(CONFIG)
     responses = []
     for split in ["train", "val", "test"]:
         if split not in annotation_paths:
