@@ -5,7 +5,7 @@ from typing import Dict, List
 import cv2
 import numpy as np
 
-from code_loader.contract.datasetclasses import PreprocessResponse
+from code_loader.contract.datasetclasses import PreprocessResponse, DataStateType
 from code_loader.inner_leap_binder.leapbinder_decorators import (
     tensorleap_gt_encoder,
     tensorleap_input_encoder,
@@ -30,6 +30,13 @@ def _load_coco(annotation_path: str, dataset_root: str) -> Dict:
     return {"images": images, "anns": anns, "root": dataset_root, "categories": categories}
 
 
+_SPLIT_TO_STATE = {
+    "train": DataStateType.training,
+    "val": DataStateType.validation,
+    "test": DataStateType.test,
+}
+
+
 @tensorleap_preprocess()
 def preprocess_func_leap() -> List[PreprocessResponse]:
     split_roots, annotation_paths = resolve_coco_paths(CONFIG)
@@ -37,8 +44,8 @@ def preprocess_func_leap() -> List[PreprocessResponse]:
     for split in ["train", "val", "test"]:
         if split not in annotation_paths:
             continue
-        data = _load_coco(annotation_paths[split], split_roots[split])
-        responses.append(PreprocessResponse(data=data, length=len(data["images"])))
+        data = _load_coco(annotation_paths[split], dataset_root)
+        responses.append(PreprocessResponse(data=data, length=len(data["images"]), state=_SPLIT_TO_STATE[split]))
     if not responses:
         raise ValueError("No COCO annotation files found for any split")
     return responses

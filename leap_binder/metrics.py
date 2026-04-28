@@ -190,7 +190,7 @@ def confusion_matrix_metric_concat_scores(labels: np.ndarray, boxes_with_scores:
     return confusion_matrix_metric_from_predictions(y_preds, targets)
 
 
-@tensorleap_custom_metric("Confusion Matrix Class Scores")
+@tensorleap_custom_metric("Confusion Matrix Class Scores", direction=MetricDirection.Upward)
 def confusion_matrix_metric_class_scores(boxes_xyxy: np.ndarray, scores_per_class: np.ndarray, targets: np.ndarray):
     y_preds = format_class_scores_predictions(boxes_xyxy, scores_per_class)
     return confusion_matrix_metric_from_predictions(y_preds, targets)
