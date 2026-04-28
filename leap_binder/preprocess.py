@@ -44,7 +44,7 @@ def preprocess_func_leap() -> List[PreprocessResponse]:
     for split in ["train", "val", "test"]:
         if split not in annotation_paths:
             continue
-        data = _load_coco(annotation_paths[split], dataset_root)
+        data = _load_coco(annotation_paths[split], split_roots[split])
         responses.append(PreprocessResponse(data=data, length=len(data["images"]), state=_SPLIT_TO_STATE[split]))
     if not responses:
         raise ValueError("No COCO annotation files found for any split")
