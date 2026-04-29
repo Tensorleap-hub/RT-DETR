@@ -22,33 +22,29 @@ def abs_path_from_root(path):
     return str(ROOT / expanded_path)
 
 
-def _as_path_candidates(path_value: Any) -> List[str]:
-    if path_value is None:
-        return []
-    if isinstance(path_value, (str, os.PathLike)):
-        return [os.fspath(path_value)]
+def _dataset_root(config: Dict[str, Any]) -> Path:
+    path_value = config.get("dataset_path")
     if isinstance(path_value, list):
-        return [os.fspath(candidate) for candidate in path_value]
-    raise TypeError("dataset_path must be a string or a list of strings.")
+        path_value = path_value[0]
+    if not path_value:
+        raise ValueError("dataset_path is not set in config")
+    return Path(abs_path_from_root(path_value))
 
 
 def resolve_coco_paths(config: Dict[str, Any]) -> Tuple[Dict[str, str], Dict[str, str]]:
+    root = _dataset_root(config)
     annotation_files = config.get("annotation_file", {})
     if isinstance(annotation_files, str):
         annotation_files = {"val": annotation_files}
-    candidates = _as_path_candidates(config.get("dataset_path"))
-    for candidate in candidates:
-        root = abs_path_from_root(candidate)
-        found = {
-            split: os.path.join(root, fname)
-            for split, fname in annotation_files.items()
-            if os.path.exists(os.path.join(root, fname))
-        }
-        if found:
-            roots = {split: os.path.dirname(path) for split, path in found.items()}
-            return roots, found
-    attempted = [abs_path_from_root(c) for c in candidates]
-    raise FileNotFoundError(f"No COCO annotation files found in any dataset_path candidate. Tried: {attempted}")
+    found = {
+        split: str(root / fname)
+        for split, fname in annotation_files.items()
+        if (root / fname).exists()
+    }
+    if not found:
+        raise FileNotFoundError(f"No COCO annotation files found under dataset_path: {root}")
+    roots = {split: str(Path(path).parent) for split, path in found.items()}
+    return roots, found
 
 
 def _load_yaml(path) -> Dict[str, Any]:
@@ -80,16 +76,17 @@ def load_label_names(config: Dict[str, Any]) -> List[str]:
             if names:
                 return names
 
-    candidates = _as_path_candidates(config.get("dataset_path"))
+    try:
+        root = _dataset_root(config)
+    except ValueError:
+        return []
     annotation_files = config.get("annotation_file", {})
     if isinstance(annotation_files, str):
         annotation_files = {"val": annotation_files}
-    for candidate in candidates:
-        root = abs_path_from_root(candidate)
-        for fname in annotation_files.values():
-            ann_path = os.path.join(root, fname)
-            if os.path.exists(ann_path):
-                return _label_names_from_coco(ann_path)
+    for fname in annotation_files.values():
+        ann_path = root / fname
+        if ann_path.exists():
+            return _label_names_from_coco(str(ann_path))
     return []
 
 

@@ -4,16 +4,14 @@ image_size: [1088, 1920]
 # If omitted or file not found, label names are read from the COCO annotation categories.
 # data_yaml_path: "data/visdrone128.yaml"
 
-dataset_path:
-  - "~/tensorleap/data/rheinmetall-mock"
+dataset_path: "~/tensorleap/data/rheinmetall-mock"
 
 max_num_of_objects: 500
 model_path: "client_format_structure.onnx"
 
 annotation_file:
-  train: "annotations_train.json"
-  val: "annotations_val.json"
-  test: "annotations_test.json"
+  train: "train/annotations_train.json"
+  val: "val/annotations_val.json"
 
 s3:
   enabled: false
@@ -37,6 +35,6 @@ loss:
     alpha: 0.25
     gamma: 2.0
 
-plot_visualizers: true
+plot_visualizers: false
 check_subset_index: 0
 check_sample_index: 0
