@@ -11,7 +11,7 @@ max_num_of_objects: 500
 model_path: "client_format_structure.onnx"
 
 annotation_file:
-  train: "train/annotations_train.json"
+  train: "annotations_train.json"
   val: "annotations_val.json"
   test: "annotations_test.json"
 

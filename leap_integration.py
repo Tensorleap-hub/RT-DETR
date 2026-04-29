@@ -31,6 +31,7 @@ from leap_config import CONFIG, abs_path_from_root
 PREDICTION_TYPES = [
     PredictionTypeHandler(name="boxes", labels=["x1", "y1", "x2", "y2"], channel_dim=-1),
     PredictionTypeHandler(name="scores", labels=[], channel_dim=-1),
+    PredictionTypeHandler(name="logits", labels=[], channel_dim=-1),
 ]
 
 
