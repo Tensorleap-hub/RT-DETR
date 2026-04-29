@@ -70,12 +70,6 @@ def input_encoder(idx: int, preprocess: PreprocessResponse) -> np.ndarray:
     return img.transpose(2, 0, 1)
 
 
-@tensorleap_input_encoder("orig_size", channel_dim=1)
-def input_size_encoder(idx: int, preprocess: PreprocessResponse) -> np.ndarray:
-    img_meta = preprocess.data["images"][idx]
-    return np.array([img_meta["height"], img_meta["width"]], dtype=np.float32)
-
-
 def _padded_gt_for_sample(idx: int, preprocessing: PreprocessResponse) -> np.ndarray:
     data = preprocessing.data
     img_meta = data["images"][idx]

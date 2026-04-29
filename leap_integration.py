@@ -10,11 +10,11 @@ from code_loader.inner_leap_binder.leapbinder_decorators import (
 )
 
 from leap_binder import (
-    bb_decoder_class_scores,
-    confusion_matrix_metric_class_scores,
-    detection_f1_loss_class_scores,
-    detection_iou_loss_class_scores,
-    get_per_sample_metrics_class_scores,
+    bb_decoder,
+    confusion_matrix_metric,
+    detection_f1_loss,
+    detection_iou_loss,
+    get_per_sample_metrics,
     gt_boxes_encoder,
     gt_encoder,
     gt_labels_encoder,
@@ -22,17 +22,11 @@ from leap_binder import (
     image_visualizer,
     input_encoder,
     preprocess_func_leap,
-    pred_bb_decoder_class_scores,
+    pred_bb_decoder,
     sample_metadata,
 )
 from leap_config import CONFIG, abs_path_from_root
 
-
-OUTPUT_INDICES = {
-    "boxes": int(CONFIG.get("output_indices", {}).get("boxes", 0)),
-    "scores": int(CONFIG.get("output_indices", {}).get("scores", 1)),
-    "logits": int(CONFIG.get("output_indices", {}).get("logits", 2)),
-}
 
 PREDICTION_TYPES = [
     PredictionTypeHandler(name="boxes", labels=["x1", "y1", "x2", "y2"], channel_dim=-1),
@@ -65,12 +59,12 @@ def check_integration(idx, subset):
     input_name = model.get_inputs()[0].name
     predictions = model.run(None, {input_name: image})
 
-    boxes_output = predictions[OUTPUT_INDICES["boxes"]]
-    scores = predictions[OUTPUT_INDICES["scores"]]
+    boxes_output = predictions[0]
+    scores_output = predictions[1]
 
     vis_image = image_visualizer(image)
-    vis_gt = bb_decoder_class_scores(image, gt, boxes_output, scores)
-    vis_pred = pred_bb_decoder_class_scores(image, boxes_output, scores)
+    vis_gt = bb_decoder(image, gt, boxes_output, scores_output)
+    vis_pred = pred_bb_decoder(image, boxes_output, scores_output)
 
     _ = vis_image
     _ = vis_gt
@@ -80,10 +74,10 @@ def check_integration(idx, subset):
         visualize(vis_gt, title="Ground truth boxes")
         visualize(vis_pred, title="Predicted boxes")
 
-    _ = get_per_sample_metrics_class_scores(boxes_output, scores, gt)
-    _ = confusion_matrix_metric_class_scores(boxes_output, scores, gt)
-    _ = detection_iou_loss_class_scores(boxes_output, scores, gt)
-    _ = detection_f1_loss_class_scores(boxes_output, scores, gt)
+    _ = get_per_sample_metrics(boxes_output, scores_output, gt)
+    _ = confusion_matrix_metric(boxes_output, scores_output, gt)
+    _ = detection_iou_loss(boxes_output, scores_output, gt)
+    _ = detection_f1_loss(boxes_output, scores_output, gt)
     _ = sample_metadata(idx, subset)
 
 
