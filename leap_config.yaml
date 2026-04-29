@@ -2,7 +2,7 @@ image_size: [1088, 1920]
 
 # Optional: path to a YAML file with a `names` or `pred_names` list for label display.
 # If omitted or file not found, label names are read from the COCO annotation categories.
-data_yaml_path: "data/visdrone128.yaml"
+# data_yaml_path: "data/visdrone128.yaml"
 
 dataset_path:
   - "~/tensorleap/data/rheinmetall-mock"

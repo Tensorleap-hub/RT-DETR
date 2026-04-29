@@ -115,8 +115,11 @@ def load_dataset_config(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 CONFIG = load_project_config()
-data_config_path = abs_path_from_root(CONFIG["data_yaml_path"])
-if os.path.exists(data_config_path):
-    DATA_CONFIG = load_dataset_config(CONFIG)
+if "data_yaml_path" in CONFIG:
+    data_config_path = abs_path_from_root(CONFIG["data_yaml_path"])
+    if os.path.exists(data_config_path):
+        DATA_CONFIG = load_dataset_config(CONFIG)
+    else:
+        DATA_CONFIG = {}
 else:
     DATA_CONFIG = {}
