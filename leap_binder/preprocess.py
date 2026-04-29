@@ -1,5 +1,5 @@
 import json
-import os
+from pathlib import Path
 from typing import Dict, List
 
 import cv2
@@ -27,7 +27,7 @@ def _load_coco(annotation_path: str, dataset_root: str) -> Dict:
     for ann in coco.get("annotations", []):
         anns.setdefault(ann["image_id"], []).append(ann)
     categories = {cat["id"]: cat["name"] for cat in coco.get("categories", [])}
-    return {"images": images, "anns": anns, "root": dataset_root, "categories": categories}
+    return {"images": images, "anns": anns, "root": Path(dataset_root) / "images", "categories": categories}
 
 
 _SPLIT_TO_STATE = {
@@ -55,7 +55,7 @@ def preprocess_func_leap() -> List[PreprocessResponse]:
 def input_encoder(idx: int, preprocess: PreprocessResponse) -> np.ndarray:
     data = preprocess.data
     img_meta = data["images"][idx]
-    image_path = os.path.join(data["root"], img_meta["file_name"])
+    image_path = str(data["root"] / img_meta["file_name"])
 
     s3_config = CONFIG.get("s3", {})
     if s3_config.get("enabled"):
