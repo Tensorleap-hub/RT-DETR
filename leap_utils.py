@@ -91,7 +91,7 @@ def load_model(model_name, use_mounted_dir=True):
 def compute_iou(gt_bbox, preds_bbox):
     iou_mat = box_iou(gt_bbox, preds_bbox)
     if iou_mat.numel() == 0 or iou_mat.shape[1] == 0 or iou_mat.shape[0] == 0:
-        return np.zeros((1,1))
+        return 0.0
     max_iou = iou_mat.max(dim=0, keepdim=True).values
     filtered_iou = iou_mat * iou_mat.eq(max_iou)
     return filtered_iou.max(dim=1).values.numpy().mean()
@@ -99,7 +99,7 @@ def compute_iou(gt_bbox, preds_bbox):
 def compute_accuracy(gt_bbox, gt_labels, preds_bbox, preds_labels):
     iou_mat = box_iou(gt_bbox, preds_bbox)
     if iou_mat.numel() == 0 or iou_mat.shape[1] == 0 or iou_mat.shape[0] == 0:
-        return np.zeros((1, 1))
+        return 0.0
     max_iou = iou_mat.max(dim=0, keepdim=True).values
     filtered_iou = iou_mat * iou_mat.eq(max_iou)
     succ = (preds_labels[filtered_iou.max(dim=1)[1].numpy()] == gt_labels).numpy()
