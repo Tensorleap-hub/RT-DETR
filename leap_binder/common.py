@@ -3,7 +3,7 @@ from typing import List
 import numpy as np
 import torch
 
-from leap_config import CONFIG, DATA_CONFIG, abs_path_from_root
+from leap_config import CONFIG, abs_path_from_root
 from utils.general import non_max_suppression
 
 
@@ -76,7 +76,7 @@ def _bbox_cxcywh_to_xyxy(boxes: np.ndarray) -> np.ndarray:
     ))
 
 
-def format_class_scores_predictions(
+def format_predictions(
     boxes: np.ndarray,
     scores_per_class: np.ndarray,
     score_threshold: float = None,
@@ -107,7 +107,7 @@ def prediction_rows(y_preds: np.ndarray) -> List[torch.Tensor]:
 
 
 def label_names() -> List[str]:
-    return DATA_CONFIG.get("pred_names", DATA_CONFIG.get("names", []))
+    return CONFIG.get("_label_names", [])
 
 
 COCO_CATEGORY_TO_LABEL = {

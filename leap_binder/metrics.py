@@ -8,7 +8,7 @@ from leap_utils import compute_accuracy, compute_iou, compute_precision_recall_f
 from utils.general import xywh2xyxy
 from utils.metrics import box_iou
 
-from .common import CONFIG, format_class_scores_predictions, format_rtdetr_concat_predictions, format_rtdetr_predictions, image_scale_wh, label_names, prediction_rows
+from .common import CONFIG, format_predictions, format_rtdetr_concat_predictions, format_rtdetr_predictions, image_scale_wh, label_names, prediction_rows
 
 
 def _batched_targets(targets: np.ndarray) -> np.ndarray:
@@ -121,7 +121,7 @@ def get_per_sample_metrics_concat_scores(labels, boxes_with_scores, targets: np.
     },
 )
 def get_per_sample_metrics_class_scores(boxes_xyxy: np.ndarray, scores_per_class: np.ndarray, targets: np.ndarray):
-    y_preds = format_class_scores_predictions(boxes_xyxy, scores_per_class)
+    y_preds = format_predictions(boxes_xyxy, scores_per_class)
     return get_per_sample_metrics_from_predictions(y_preds, targets)
 
 
@@ -192,5 +192,5 @@ def confusion_matrix_metric_concat_scores(labels: np.ndarray, boxes_with_scores:
 
 @tensorleap_custom_metric("Confusion Matrix Class Scores", direction=MetricDirection.Upward)
 def confusion_matrix_metric_class_scores(boxes_xyxy: np.ndarray, scores_per_class: np.ndarray, targets: np.ndarray):
-    y_preds = format_class_scores_predictions(boxes_xyxy, scores_per_class)
+    y_preds = format_predictions(boxes_xyxy, scores_per_class)
     return confusion_matrix_metric_from_predictions(y_preds, targets)

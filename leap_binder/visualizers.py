@@ -7,7 +7,7 @@ from code_loader.inner_leap_binder.leapbinder_decorators import tensorleap_custo
 from code_loader.visualizers.default_visualizers import LeapImage
 from utils.general import xyxy2xywh
 
-from .common import format_class_scores_predictions, format_rtdetr_concat_predictions, format_rtdetr_predictions, label_names, prediction_rows
+from .common import format_predictions, format_rtdetr_concat_predictions, format_rtdetr_predictions, label_names, prediction_rows
 
 
 def _image_to_uint8(image: np.ndarray) -> np.ndarray:
@@ -144,7 +144,7 @@ def bb_decoder_class_scores(
     predictions: np.ndarray = None,
 ) -> LeapImageWithBBox:
     if predictions is None:
-        predictions = format_class_scores_predictions(boxes_xyxy, scores_per_class)
+        predictions = format_predictions(boxes_xyxy, scores_per_class)
     return bb_decoder_from_predictions(image, bb_gt, predictions)
 
 
@@ -157,7 +157,7 @@ def pred_bb_decoder_class_scores(
     predictions: np.ndarray = None,
 ) -> LeapImageWithBBox:
     if predictions is None:
-        predictions = format_class_scores_predictions(boxes_xyxy, scores_per_class)
+        predictions = format_predictions(boxes_xyxy, scores_per_class)
     return pred_bb_decoder_from_predictions(image, predictions)
 
 
