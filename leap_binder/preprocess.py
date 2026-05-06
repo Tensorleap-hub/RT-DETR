@@ -78,13 +78,22 @@ def _padded_gt_for_sample(idx: int, preprocessing: PreprocessResponse) -> np.nda
     img_w = img_meta["width"]
     img_h = img_meta["height"]
 
+    gt_fmt = CONFIG.get("gt_bbox_format", "xywh")
     rows = []
     for ann in annotations:
-        x, y, w, h = ann["bbox"]
-        cx = (x + w / 2) / img_w
-        cy = (y + h / 2) / img_h
-        nw = w / img_w
-        nh = h / img_h
+        b = ann["bbox"]
+        if gt_fmt == "xyxy":
+            x1, y1, x2, y2 = b
+            cx = (x1 + x2) / 2 / img_w
+            cy = (y1 + y2) / 2 / img_h
+            nw = (x2 - x1) / img_w
+            nh = (y2 - y1) / img_h
+        else:
+            x, y, w, h = b
+            cx = (x + w / 2) / img_w
+            cy = (y + h / 2) / img_h
+            nw = w / img_w
+            nh = h / img_h
         rows.append([float(ann["category_id"]), cx, cy, nw, nh])
 
     if not rows:

@@ -21,6 +21,16 @@ s3:
 score_threshold: 0.3
 max_detections: 300
 
+# GT annotation bbox format in the COCO JSON.
+# "xywh" = standard COCO [x_topleft, y_topleft, width, height] (absolute pixels)
+# "xyxy" = [x1, y1, x2, y2] (absolute pixels)
+gt_bbox_format: "xywh"
+
+# Model output bbox format for the boxes tensor.
+# "xyxy_abs" = absolute pixel [x1, y1, x2, y2] in model input resolution
+# "cxcywh_norm" = normalized [cx, cy, w, h] in [0, 1]
+pred_bbox_format: "xyxy_abs"
+
 loss:
   weight_dict:
     loss_vfl: 1.0
