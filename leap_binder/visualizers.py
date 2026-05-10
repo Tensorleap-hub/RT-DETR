@@ -7,7 +7,7 @@ from code_loader.inner_leap_binder.leapbinder_decorators import tensorleap_custo
 from code_loader.visualizers.default_visualizers import LeapImage
 from utils.general import xyxy2xywh
 
-from .common import format_predictions, label_names, prediction_rows
+from .common import CONFIG, format_predictions, label_names, prediction_rows
 
 
 def _image_to_uint8(image: np.ndarray) -> np.ndarray:
@@ -106,25 +106,32 @@ def _pred_bb_creator(
 ) -> list[BoundingBox]:
     prediction_tensor = prediction_rows(predictions)
     preds = prediction_tensor[0].numpy() if len(prediction_tensor) > 0 else np.zeros((0, 6), dtype=np.float32)
-    preds = xyxy2xywh(preds)
 
     image_data = _image_to_uint8(image)
     h, w, _ = image_data.shape
 
+    pred_fmt = CONFIG.get("pred_bbox_format", "xyxy_abs")
+    if pred_fmt == "cxcywh_norm":
+        boxes_norm = preds[:, :4]
+    else:
+        raw = xyxy2xywh(preds)
+        boxes_norm = raw[:, :4] / np.array([w, h, w, h], dtype=np.float32)
+
     names = label_names()
     bboxes = []
-    for pred in preds:
+    for i, pred in enumerate(preds):
         label_idx = int(pred[5]) if not np.isnan(pred[5]) else -1
         if 0 <= label_idx < len(names):
             label = names[label_idx] + "_PRED"
         else:
             label = "Unknown Class_PRED"
+        bx = boxes_norm[i]
         bboxes.append(
             BoundingBox(
-                x=pred[0] / w,
-                y=pred[1] / h,
-                width=pred[2] / w,
-                height=pred[3] / h,
+                x=float(bx[0]),
+                y=float(bx[1]),
+                width=float(bx[2]),
+                height=float(bx[3]),
                 confidence=pred[4],
                 label=label,
             )
