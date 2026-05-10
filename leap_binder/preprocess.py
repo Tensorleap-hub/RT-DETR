@@ -67,7 +67,8 @@ def input_encoder(idx: int, preprocess: PreprocessResponse) -> np.ndarray:
 
     s3_config = CONFIG.get("s3", {})
     if s3_config.get("enabled"):
-        s3_key = f"{s3_config['prefix']}/{img_meta['file_name']}"
+        relative = Path(image_path).relative_to(_dataset_root(CONFIG))
+        s3_key = f"{s3_config['prefix']}/{relative}"
         download_file_if_missing(s3_config["bucket_name"], s3_key, image_path)
 
     image_size = CONFIG["image_size"]
