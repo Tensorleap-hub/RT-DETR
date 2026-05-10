@@ -11,9 +11,9 @@ from code_loader.inner_leap_binder.leapbinder_decorators import (
     tensorleap_input_encoder,
     tensorleap_preprocess,
 )
-from leap_config import resolve_coco_paths
+from leap_config import _dataset_root, resolve_coco_paths
 
-from .aws_utils import download_file_if_missing
+from .aws_utils import download_annotations, download_file_if_missing
 from .common import CONFIG
 
 
@@ -39,6 +39,14 @@ _SPLIT_TO_STATE = {
 
 @tensorleap_preprocess()
 def preprocess_func_leap() -> List[PreprocessResponse]:
+    s3_config = CONFIG.get("s3", {})
+    if s3_config.get("enabled"):
+        download_annotations(
+            s3_config["bucket_name"],
+            s3_config["prefix"],
+            CONFIG.get("annotation_file", {}),
+            str(_dataset_root(CONFIG)),
+        )
     split_roots, annotation_paths = resolve_coco_paths(CONFIG)
     responses = []
     for split in ["train", "val", "test"]:
@@ -59,7 +67,8 @@ def input_encoder(idx: int, preprocess: PreprocessResponse) -> np.ndarray:
 
     s3_config = CONFIG.get("s3", {})
     if s3_config.get("enabled"):
-        s3_key = f"{s3_config['prefix']}/{img_meta['file_name']}"
+        relative = Path(image_path).relative_to(_dataset_root(CONFIG))
+        s3_key = f"{s3_config['prefix']}/{relative}"
         download_file_if_missing(s3_config["bucket_name"], s3_key, image_path)
 
     image_size = CONFIG["image_size"]

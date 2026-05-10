@@ -1,6 +1,5 @@
 import json
 import os
-from typing import Optional
 
 import boto3
 
@@ -32,3 +31,16 @@ def download_file_if_missing(bucket: str, s3_key: str, local_path: str) -> str:
     s3_client = _connect_to_s3()
     s3_client.download_file(bucket, s3_key, local_path)
     return local_path
+
+
+def download_annotations(bucket: str, prefix: str, annotation_files: dict, dataset_root: str) -> None:
+    s3_client = None
+    for relative_path in annotation_files.values():
+        local_path = os.path.join(dataset_root, relative_path)
+        if os.path.exists(local_path):
+            continue
+        s3_key = f"{prefix}/{relative_path}".lstrip("/")
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        if s3_client is None:
+            s3_client = _connect_to_s3()
+        s3_client.download_file(bucket, s3_key, local_path)
