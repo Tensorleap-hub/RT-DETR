@@ -9,17 +9,6 @@ from code_loader.inner_leap_binder.leapbinder_decorators import tensorleap_metad
 from .common import CONFIG, parse_gt_bbox
 
 
-def average_dist_nn(boxes: np.ndarray) -> float:
-    if len(boxes) < 2:
-        return 1.0
-    data = boxes[:, :2]
-    distance_matrix = np.full((len(data), len(data)), np.inf)
-    for i in range(len(data)):
-        for j in range(i + 1, len(data)):
-            distance_matrix[i, j] = np.linalg.norm(data[i] - data[j])
-    return float(np.mean(np.min(distance_matrix[:, 1:], axis=0)))
-
-
 def _safe_stat(values: np.ndarray, reducer) -> float:
     if len(values) == 0:
         return float(np.nan)

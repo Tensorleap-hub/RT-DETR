@@ -3,7 +3,7 @@ from .losses import (
     detection_f1_loss,
     detection_iou_loss,
 )
-from .metadata import average_dist_nn, sample_metadata
+from .metadata import sample_metadata
 from .metrics import (
     confusion_matrix_metric,
     confusion_matrix_metric_from_predictions,
@@ -25,7 +25,6 @@ from .visualizers import (
 )
 
 __all__ = [
-    "average_dist_nn",
     "bb_decoder",
     "compute_detection_losses",
     "confusion_matrix_metric",

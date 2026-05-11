@@ -5,8 +5,8 @@ from code_loader.contract.datasetclasses import ConfusionMatrixElement
 from code_loader.contract.enums import ConfusionMatrixValue, MetricDirection
 from code_loader.inner_leap_binder.leapbinder_decorators import tensorleap_custom_metric
 from leap_utils import compute_accuracy, compute_iou, compute_precision_recall_f1_fp_tp_fn
+from ultralytics.utils.metrics import box_iou
 from utils.general import xywh2xyxy
-from utils.metrics import box_iou
 
 from .common import CONFIG, format_predictions, label_names, pred_boxes_to_norm_xyxy, prediction_rows
 
@@ -130,7 +130,7 @@ def confusion_matrix_metric_from_predictions(y_preds: np.ndarray, targets: np.nd
                 confusion_matrix_elements.append(
                     ConfusionMatrixElement(str(class_name), ConfusionMatrixValue.Positive, float(0))
                 )
-        if all(~gts_detected):
+        if pred.shape[0] == 0 and gt_labels.shape[0] > 0:
             confusion_matrix_elements.append(
                 ConfusionMatrixElement("background", ConfusionMatrixValue.Positive, float(0))
             )
