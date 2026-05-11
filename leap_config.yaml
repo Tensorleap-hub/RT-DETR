@@ -22,13 +22,13 @@ score_threshold: 0.3
 max_detections: 300
 
 # GT annotation bbox format in the COCO JSON.
-# "xywh" = standard COCO [x_topleft, y_topleft, width, height] (absolute pixels)
-# "xyxy" = [x1, y1, x2, y2] (absolute pixels)
-gt_bbox_format: "xywh"
+# Coordinate type: "xywh" (top-left + size), "xyxy" (two corners), "cxcywh" (center + size)
+# Scale suffix:    "_abs" (absolute pixels),  "_norm" (normalized 0-1)
+# Valid values: "xywh_abs", "xywh_norm", "xyxy_abs", "xyxy_norm", "cxcywh_abs", "cxcywh_norm"
+gt_bbox_format: "xywh_abs"
 
 # Model output bbox format for the boxes tensor.
-# "xyxy_abs" = absolute pixel [x1, y1, x2, y2] in model input resolution
-# "cxcywh_norm" = normalized [cx, cy, w, h] in [0, 1]
+# Valid values: "xyxy_abs", "xyxy_norm", "cxcywh_abs", "cxcywh_norm"
 pred_bbox_format: "xyxy_abs"
 
 loss:

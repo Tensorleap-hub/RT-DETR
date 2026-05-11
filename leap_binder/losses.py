@@ -8,7 +8,7 @@ from utils.general import xywh2xyxy
 
 from leap_utils import compute_iou, compute_precision_recall_f1_fp_tp_fn
 
-from .common import CONFIG, format_predictions, image_scale_wh, prediction_rows
+from .common import CONFIG, format_predictions, pred_boxes_to_norm_xyxy, prediction_rows
 
 
 def _batched_targets(targets: np.ndarray) -> np.ndarray:
@@ -39,11 +39,7 @@ def compute_detection_losses(targets: np.ndarray, *, y_preds: np.ndarray) -> Dic
             f1_losses.append(1.0)
             continue
 
-        pred_fmt = CONFIG.get("pred_bbox_format", "xyxy_abs")
-        if pred_fmt == "cxcywh_norm":
-            pred_boxes = xywh2xyxy(pred[:, :4])
-        else:
-            pred_boxes = pred[:, :4] / image_scale_wh(CONFIG["image_size"])
+        pred_boxes = pred_boxes_to_norm_xyxy(pred[:, :4], CONFIG["image_size"])
         gt_boxes = xywh2xyxy(gt[:, 1:])
         _, _, f1, _, _, _ = compute_precision_recall_f1_fp_tp_fn(gt_boxes, pred_boxes, iou_threshold=0.1)
         iou = compute_iou(gt_boxes, pred_boxes)
