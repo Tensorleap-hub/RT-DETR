@@ -65,6 +65,20 @@ def prediction_rows(y_preds: np.ndarray) -> List[torch.Tensor]:
     return non_max_suppression(torch.from_numpy(y_preds))
 
 
+def parse_gt_bbox(b, img_w: int, img_h: int, fmt: str):
+    sx = float(img_w) if "_norm" in fmt else 1.0
+    sy = float(img_h) if "_norm" in fmt else 1.0
+    if "xyxy" in fmt:
+        x1, y1, x2, y2 = b[0] * sx, b[1] * sy, b[2] * sx, b[3] * sy
+    elif "cxcywh" in fmt:
+        cx_a, cy_a, w_a, h_a = b[0] * sx, b[1] * sy, b[2] * sx, b[3] * sy
+        x1, y1, x2, y2 = cx_a - w_a / 2, cy_a - h_a / 2, cx_a + w_a / 2, cy_a + h_a / 2
+    else:  # xywh
+        x1, y1, w_a, h_a = b[0] * sx, b[1] * sy, b[2] * sx, b[3] * sy
+        x2, y2 = x1 + w_a, y1 + h_a
+    return (x1 + x2) / 2 / img_w, (y1 + y2) / 2 / img_h, (x2 - x1) / img_w, (y2 - y1) / img_h
+
+
 def pred_boxes_to_norm_cxcywh(boxes: np.ndarray, img_h: int, img_w: int) -> np.ndarray:
     fmt = CONFIG.get("pred_bbox_format", "xyxy_abs")
     scale = np.array([img_w, img_h, img_w, img_h], dtype=np.float32)

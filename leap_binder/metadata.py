@@ -6,6 +6,8 @@ import numpy as np
 from code_loader.contract.datasetclasses import PreprocessResponse
 from code_loader.inner_leap_binder.leapbinder_decorators import tensorleap_metadata
 
+from .common import CONFIG, parse_gt_bbox
+
 
 def average_dist_nn(boxes: np.ndarray) -> float:
     if len(boxes) < 2:
@@ -37,10 +39,12 @@ def sample_metadata(idx: int, preprocessing: PreprocessResponse) -> dict:
     sharpness = laplacian.var()
 
     img_w, img_h = img_meta["width"], img_meta["height"]
+    gt_fmt = CONFIG.get("gt_bbox_format", "xywh_abs")
     cat_ids = np.array([ann["category_id"] for ann in annotations], dtype=np.float32)
-    bbox_cx = np.array([(ann["bbox"][0] + ann["bbox"][2] / 2) / img_w for ann in annotations], dtype=np.float32)
-    bbox_cy = np.array([(ann["bbox"][1] + ann["bbox"][3] / 2) / img_h for ann in annotations], dtype=np.float32)
-    bbox_areas = np.array([(ann["bbox"][2] * ann["bbox"][3]) / (img_w * img_h) for ann in annotations], dtype=np.float32)
+    parsed = [parse_gt_bbox(ann["bbox"], img_w, img_h, gt_fmt) for ann in annotations]
+    bbox_cx = np.array([p[0] for p in parsed], dtype=np.float32)
+    bbox_cy = np.array([p[1] for p in parsed], dtype=np.float32)
+    bbox_areas = np.array([p[2] * p[3] for p in parsed], dtype=np.float32)
 
     unique_classes, class_counts = np.unique(cat_ids, return_counts=True)
     class_count_map = {int(cls): int(cnt) for cls, cnt in zip(unique_classes, class_counts)}

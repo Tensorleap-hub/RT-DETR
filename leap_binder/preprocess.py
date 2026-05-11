@@ -14,21 +14,7 @@ from code_loader.inner_leap_binder.leapbinder_decorators import (
 from leap_config import _dataset_root, resolve_coco_paths
 
 from .aws_utils import download_annotations, download_file_if_missing
-from .common import CONFIG
-
-
-def _parse_gt_bbox(b, img_w: int, img_h: int, fmt: str):
-    sx = float(img_w) if "_norm" in fmt else 1.0
-    sy = float(img_h) if "_norm" in fmt else 1.0
-    if "xyxy" in fmt:
-        x1, y1, x2, y2 = b[0] * sx, b[1] * sy, b[2] * sx, b[3] * sy
-    elif "cxcywh" in fmt:
-        cx_a, cy_a, w_a, h_a = b[0] * sx, b[1] * sy, b[2] * sx, b[3] * sy
-        x1, y1, x2, y2 = cx_a - w_a / 2, cy_a - h_a / 2, cx_a + w_a / 2, cy_a + h_a / 2
-    else:  # xywh
-        x1, y1, w_a, h_a = b[0] * sx, b[1] * sy, b[2] * sx, b[3] * sy
-        x2, y2 = x1 + w_a, y1 + h_a
-    return (x1 + x2) / 2 / img_w, (y1 + y2) / 2 / img_h, (x2 - x1) / img_w, (y2 - y1) / img_h
+from .common import CONFIG, parse_gt_bbox
 
 
 def _load_coco(annotation_path: str, dataset_root: str) -> Dict:
@@ -104,7 +90,7 @@ def _padded_gt_for_sample(idx: int, preprocessing: PreprocessResponse) -> np.nda
     gt_fmt = CONFIG.get("gt_bbox_format", "xywh_abs")
     rows = []
     for ann in annotations:
-        cx, cy, nw, nh = _parse_gt_bbox(ann["bbox"], img_w, img_h, gt_fmt)
+        cx, cy, nw, nh = parse_gt_bbox(ann["bbox"], img_w, img_h, gt_fmt)
         rows.append([float(ann["category_id"]), cx, cy, nw, nh])
 
     if not rows:
