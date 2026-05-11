@@ -14,5 +14,4 @@ include:
     - models/*.py
     - utils/*.py
     - utils/**/*.py
-    - utils/***/**/*.py
-pythonVersion: py39
+pythonVersion: py310
