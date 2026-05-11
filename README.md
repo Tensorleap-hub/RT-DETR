@@ -1,15 +1,8 @@
 # RT-DETR Tensorleap Integration
 
-This repository contains a Tensorleap integration for object detection using an ONNX RT-DETR model. The current integration entrypoint is `leap_integration.py`, with dataset preprocessing, metrics, visualizers, losses, and metadata implemented under `leap_binder/`.
+This repository contains a Tensorleap integration for object detection using an ONNX RT-DETR model. The integration entrypoint is `leap_integration.py`, with dataset preprocessing, metrics, visualizers, losses, and metadata implemented under `leap_binder/`.
 
-The integration is dataset-configurable from `leap_config.yaml` and currently supports:
-
-- `coco`
-- `coco128`
-- `visdrone128`
-- `visdrone`
-
-The default out-of-the-box configuration uses the committed `visdrone128` subset together with `rtdetrv2_r18vd_120e_raw_outputs.onnx`, so a fresh clone can run local validation without downloading a dataset first.
+All configuration lives in `leap_config.yaml`.
 
 ## Prerequisites
 
@@ -17,8 +10,6 @@ The default out-of-the-box configuration uses the committed `visdrone128` subset
 - Tensorleap CLI installed and authenticated if you plan to push to the platform
 
 ## Installation
-
-### Poetry
 
 ```bash
 poetry install
@@ -30,111 +21,147 @@ Run local commands with:
 poetry run python leap_integration.py
 ```
 
-### pip
-
-If you want a local pip-based environment instead of Poetry, use:
-
-```bash
-pip install -r local_requirements.txt
-```
-
-`local_requirements.txt` mirrors the dependencies from `pyproject.toml` for local use.
-
-Do not use `requirements.txt` for local setup. In this repository, `requirements.txt` is reserved for Tensorleap packaging via `leap.yaml`.
-
 ## Configuration
 
-Main configuration lives in `leap_config.yaml`.
+All fields are set in `leap_config.yaml`.
 
-### Dataset selection
-
-Switch datasets by changing:
+### Image size
 
 ```yaml
-dataset_name: "coco"
+image_size: [1088, 1920]  # [height, width]
 ```
 
-The default value in this repository is:
+Height and width the model expects. Images are resized to this before inference.
+
+### Model
 
 ```yaml
-dataset_name: "visdrone128"
+model_path: "model.onnx"
 ```
 
-The dataset root path is configured separately in `leap_config.yaml`:
+Path to the ONNX model file. Relative paths are resolved from the repository root.
+
+The model is expected to expose at least two outputs:
+
+- `output[0]`: bounding boxes, shape `[1, N, 4]`
+- `output[1]`: class scores, shape `[1, N, num_classes]`
+
+### Dataset
 
 ```yaml
-dataset_path:
-  - "data/visdrone128"
-  - "/data/visdrone128"
+dataset_path: "/path/to/dataset"
+
+annotation_file:
+  train: "train/annotations_train.json"
+  val: "val/annotations_val.json"
 ```
 
-`dataset_path` may be either a single root path or an ordered list of candidate roots. The integration checks the candidates in order and uses the first one that contains the configured dataset split paths. If none of the candidates contain the dataset, it raises an exception listing the attempted roots.
+`dataset_path` is the root folder of the dataset. `annotation_file` maps split names (`train`, `val`, `test`) to COCO-format JSON annotation paths relative to `dataset_path`. Only splits whose annotation files exist on disk are loaded.
 
-Supported values:
+Images are resolved under `<split_root>/images/` using the `file_name` field from each annotation entry. Windows-style backslashes in `file_name` are normalized automatically.
 
-- `coco`
-- `coco128`
-- `visdrone128`
-- `visdrone`
+#### Label names
 
-Dataset profiles are resolved in `leap_config.py` and point to:
-
-- `data/coco.yaml`
-- `data/coco128.yaml`
-- `data/visdrone128.yaml`
-- `data/visdrone.yaml`
-
-The dataset YAML selects split structure and class names. The actual filesystem root is taken from `dataset_path` in `leap_config.yaml`, not from the dataset YAML.
-
-### Dataset autodownload
-
-- `visdrone` defaults to `dataset_autodownload: true`
-- `coco`, `coco128`, and `visdrone128` default to `dataset_autodownload: false`
-
-You can still override `dataset_autodownload` explicitly in `leap_config.yaml` if needed.
-
-### Model configuration
-
-The current active model is configured via:
+By default, class names are read from the `categories` field of the COCO annotation JSON. To override with a custom list, add:
 
 ```yaml
-model_path: "rtdetrv2_r18vd_120e_raw_outputs.onnx"
+data_yaml_path: "data/labels.yaml"
 ```
 
-The integration supports these ONNX output contracts, configured by `model_output_format` in `leap_config.yaml`:
+The YAML file should contain a `names` or `pred_names` key with a list of class name strings. If the file is absent or neither key is present, the integration falls back to the COCO categories.
 
-- `rtdetr_raw`
-  - outputs: `labels`, `boxes`, `scores`, `pred_logits`, `pred_boxes`
-  - enables RT-DETR native loss hooks, detection metrics, and detection losses
-- `detections`
-  - outputs: `labels`, `boxes`, `scores`
-  - enables detection metrics, detection losses, and visualizers
-- `detections_concat_scores`
-  - outputs: `labels`, `boxes`
-  - expects the `boxes` tensor to be `[x1, y1, x2, y2, score]`
-  - enables alternate metrics, detection losses, and visualizers that read score from the last box channel
-  - RT-DETR native loss hooks are not used because raw outputs are absent
-
-For example:
+### S3
 
 ```yaml
-model_output_format: "detections_concat_scores"
-output_indices:
-  labels: 0
-  boxes: 1
+s3:
+  enabled: false
+  bucket_name: ""
+  prefix: ""
 ```
 
-For `rtdetr_raw`, the ONNX model is expected to expose:
+When `enabled: true`, annotation files and images are downloaded from S3 on demand before being read. Set `bucket_name` and `prefix` to match your bucket layout.
 
-- inputs:
-  - `images`
-  - `orig_target_sizes`
-- outputs:
-  - `labels`
-  - `boxes`
-  - `scores`
-  - `pred_logits`
-  - `pred_boxes`
+### Detection thresholds
+
+```yaml
+score_threshold: 0.3
+max_detections: 300
+max_num_of_objects: 500
+```
+
+- `score_threshold`: minimum confidence for a prediction to be kept in metrics and visualizers
+- `max_detections`: maximum number of predictions kept per image after score filtering
+- `max_num_of_objects`: maximum number of GT objects per image (padding target)
+
+### Bounding box formats
+
+The integration supports flexible bbox formats for both GT annotations and model outputs.
+
+#### GT format
+
+```yaml
+# Valid values: "xywh_abs", "xywh_norm", "xyxy_abs", "xyxy_norm", "cxcywh_abs", "cxcywh_norm"
+gt_bbox_format: "xywh_abs"
+```
+
+Describes the format of the `bbox` field in each COCO annotation entry:
+
+| Value | Coordinate type | Scale |
+| --- | --- | --- |
+| `xywh_abs` | top-left x, y + width, height | absolute pixels (standard COCO) |
+| `xywh_norm` | top-left x, y + width, height | normalized 0–1 |
+| `xyxy_abs` | top-left and bottom-right corners | absolute pixels |
+| `xyxy_norm` | top-left and bottom-right corners | normalized 0–1 |
+| `cxcywh_abs` | center x, y + width, height | absolute pixels |
+| `cxcywh_norm` | center x, y + width, height | normalized 0–1 |
+
+#### Prediction format
+
+```yaml
+# Valid values: "xyxy_abs", "xyxy_norm", "cxcywh_abs", "cxcywh_norm"
+pred_bbox_format: "xyxy_abs"
+```
+
+Describes the format of the boxes tensor produced by the ONNX model:
+
+| Value | Coordinate type | Scale |
+| --- | --- | --- |
+| `xyxy_abs` | top-left and bottom-right corners | absolute pixels in model input resolution |
+| `xyxy_norm` | top-left and bottom-right corners | normalized 0–1 |
+| `cxcywh_abs` | center x, y + width, height | absolute pixels in model input resolution |
+| `cxcywh_norm` | center x, y + width, height | normalized 0–1 |
+
+### Loss weights
+
+```yaml
+loss:
+  weight_dict:
+    loss_vfl: 1.0
+    loss_bbox: 5.0
+    loss_giou: 2.0
+  alpha: 0.75
+  gamma: 2.0
+  matcher:
+    cost_class: 2.0
+    cost_bbox: 5.0
+    cost_giou: 2.0
+    alpha: 0.25
+    gamma: 2.0
+```
+
+Weights and focal-loss parameters used by the RT-DETR detection losses.
+
+### Local validation controls
+
+```yaml
+plot_visualizers: false
+check_subset_index: 0
+check_sample_index: 0
+```
+
+- `plot_visualizers`: when `true`, renders visualizer outputs to screen during `leap_integration.py`
+- `check_subset_index`: which dataset split to use for the integration test (0 = first found split)
+- `check_sample_index`: which sample within that split to test
 
 ## Local validation
 
@@ -144,69 +171,31 @@ Run the integration locally before pushing:
 poetry run python leap_integration.py
 ```
 
-To export an RT-DETR v1 checkpoint to ONNX from the repo root, use:
-
-```bash
-poetry run python export_onnx.py \
-  -c vendor/RT-DETR/rtdetr_pytorch/configs/rtdetr/rtdetr_r18vd_6x_coco.yml \
-  -r path/to/checkpoint.pth \
-  -o model.onnx \
-  --loss-outputs
-```
-
-This validates:
-
-- dataset loading
-- model inference
-- visualizers
-- custom metrics
-- custom detection losses
-- metadata
-- custom loss hooks
+This validates dataset loading, model inference, visualizers, metrics, losses, and metadata for a single sample.
 
 ## Project structure
 
-Key files and folders:
-
-- `leap_integration.py`: Tensorleap entrypoint and integration test
-- `leap_config.yaml`: project configuration
-- `leap_config.py`: config loader and dataset profile resolution
-- `export_onnx.py`: root-level RT-DETR v1 ONNX exporter
-- `data/`: dataset YAML definitions
-- `leap_binder/preprocess.py`: preprocess and encoders
-- `leap_binder/metrics.py`: custom metrics
-- `leap_binder/visualizers.py`: image and bounding box visualizers
-- `leap_binder/losses.py`: custom loss and RT-DETR loss components
-- `leap_binder/metadata.py`: per-sample metadata
-
-## Dataset notes
-
-### VisDrone
-
-`data/visdrone.yaml` downloads the VisDrone detection archives and converts annotations into YOLO-format label files during setup.
-
-### VisDrone128
-
-`data/visdrone128.yaml` points to a small committed subset of VisDrone with `96` train images, `16` validation images, and `16` test images for quick local checks and git-tracked examples.
-
-### COCO128
-
-`data/coco128.yaml` points to a lightweight COCO subset intended for quick local validation.
-
-### COCO
-
-`data/coco.yaml` defines the full COCO 2017 dataset. It is much larger than COCO128 and is not enabled for autodownload by default.
+| Path | Purpose |
+| --- | --- |
+| `leap_integration.py` | Tensorleap entrypoint and local integration test |
+| `leap_config.yaml` | All project configuration |
+| `leap_config.py` | Config loader and path resolution |
+| `leap_binder/preprocess.py` | Preprocessing, input encoder, GT encoders |
+| `leap_binder/visualizers.py` | Image and bounding box visualizers |
+| `leap_binder/metrics.py` | Per-sample detection metrics and confusion matrix |
+| `leap_binder/losses.py` | Detection IoU and F1 losses |
+| `leap_binder/metadata.py` | Per-sample metadata (sharpness, bbox stats, class counts) |
+| `leap_binder/common.py` | Shared utilities (bbox conversion, prediction formatting) |
 
 ## Pushing to Tensorleap
 
-After local validation passes, copy the visdrone128 datset to tensorleap accessable folder, 
-update the leap_config.yaml and push the project with the current model:
+After local validation passes, push the project with the model:
 
 ```bash
-leap push -m rtdetrv2_r18vd_120e_raw_outputs.onnx
+leap push -m model.onnx
 ```
 
-If only code changes were made and the model asset did not change, prefer:
+If only code changed and the model asset is unchanged:
 
 ```bash
 leap push
@@ -214,12 +203,12 @@ leap push
 
 ## Troubleshooting
 
-- If visualizations look wrong, verify you are looking at the updated prediction visualizer path in `leap_binder/visualizers.py`.
-- If dataset loading fails, check `dataset_name`, `dataset_autodownload`, and the selected dataset YAML.
-- If platform validation fails while local validation passes, re-check model mapping and configured IO expectations.
+- **Bounding boxes look wrong in size or position** — check `gt_bbox_format` and `pred_bbox_format`. Mismatched formats are the most common cause of displaced or oversized boxes.
+- **No samples loaded** — verify `dataset_path` exists and that the annotation JSON paths under `annotation_file` resolve correctly.
+- **Empty label names** — the COCO annotation JSON must have a non-empty `categories` field, or `data_yaml_path` must point to a valid label YAML.
+- **S3 download failures** — confirm `s3.bucket_name`, `s3.prefix`, and AWS credentials are correct when `s3.enabled: true`.
+- **Platform validation fails while local passes** — re-check that `dataset_path` and `model_path` are accessible from the platform environment.
 
 ## References
 
 - [Tensorleap Docs](https://docs.tensorleap.ai/)
-- [VisDrone Dataset](https://github.com/VisDrone/VisDrone-Dataset)
-- [COCO Dataset](https://cocodataset.org/)
