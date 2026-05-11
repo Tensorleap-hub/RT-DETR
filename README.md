@@ -12,14 +12,16 @@ All configuration lives in `leap_config.yaml`.
 ## Installation
 
 ```bash
-poetry install
+pip install -r local_requirements.txt
 ```
 
-Run local commands with:
+Then run local commands directly:
 
 ```bash
-poetry run python leap_integration.py
+python leap_integration.py
 ```
+
+> **Note for Tensorleap developers:** A `pyproject.toml` is also provided for Poetry-based environments. `local_requirements.txt` and `pyproject.toml` are kept in sync and cover the same dependencies. Do not use `requirements.txt` for local setup — that file is reserved for Tensorleap platform packaging via `leap.yaml`.
 
 ## Configuration
 
@@ -168,7 +170,7 @@ check_sample_index: 0
 Run the integration locally before pushing:
 
 ```bash
-poetry run python leap_integration.py
+python leap_integration.py
 ```
 
 This validates dataset loading, model inference, visualizers, metrics, losses, and metadata for a single sample.
