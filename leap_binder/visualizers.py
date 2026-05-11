@@ -5,9 +5,7 @@ from code_loader.contract.responsedataclasses import BoundingBox
 from code_loader.contract.visualizer_classes import LeapImageWithBBox
 from code_loader.inner_leap_binder.leapbinder_decorators import tensorleap_custom_visualizer
 from code_loader.visualizers.default_visualizers import LeapImage
-from utils.general import xyxy2xywh
-
-from .common import CONFIG, format_predictions, label_names, prediction_rows
+from .common import CONFIG, format_predictions, label_names, pred_boxes_to_norm_cxcywh, prediction_rows
 
 
 def _image_to_uint8(image: np.ndarray) -> np.ndarray:
@@ -110,12 +108,7 @@ def _pred_bb_creator(
     image_data = _image_to_uint8(image)
     h, w, _ = image_data.shape
 
-    pred_fmt = CONFIG.get("pred_bbox_format", "xyxy_abs")
-    if pred_fmt == "cxcywh_norm":
-        boxes_norm = preds[:, :4]
-    else:
-        raw = xyxy2xywh(preds)
-        boxes_norm = raw[:, :4] / np.array([w, h, w, h], dtype=np.float32)
+    boxes_norm = pred_boxes_to_norm_cxcywh(preds[:, :4], h, w)
 
     names = label_names()
     bboxes = []

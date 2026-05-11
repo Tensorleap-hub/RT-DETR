@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 from leap_config import CONFIG
-from utils.general import non_max_suppression
+from utils.general import non_max_suppression, xywh2xyxy, xyxy2xywh
 
 
 def image_scale_wh(image_size) -> np.ndarray:
@@ -63,6 +63,32 @@ def prediction_rows(y_preds: np.ndarray) -> List[torch.Tensor]:
     if y_preds.ndim == 3 and y_preds.shape[-1] == 6:
         return [torch.from_numpy(y_preds[0].astype(np.float32))]
     return non_max_suppression(torch.from_numpy(y_preds))
+
+
+def pred_boxes_to_norm_cxcywh(boxes: np.ndarray, img_h: int, img_w: int) -> np.ndarray:
+    fmt = CONFIG.get("pred_bbox_format", "xyxy_abs")
+    scale = np.array([img_w, img_h, img_w, img_h], dtype=np.float32)
+    if fmt == "xyxy_abs":
+        return xyxy2xywh(boxes) / scale
+    elif fmt == "xyxy_norm":
+        return xyxy2xywh(boxes)
+    elif fmt == "cxcywh_abs":
+        return boxes / scale
+    else:  # cxcywh_norm
+        return boxes
+
+
+def pred_boxes_to_norm_xyxy(boxes: np.ndarray, image_size) -> np.ndarray:
+    fmt = CONFIG.get("pred_bbox_format", "xyxy_abs")
+    scale = image_scale_wh(image_size)
+    if fmt == "xyxy_abs":
+        return boxes / scale
+    elif fmt == "xyxy_norm":
+        return boxes
+    elif fmt == "cxcywh_abs":
+        return xywh2xyxy(boxes / scale)
+    else:  # cxcywh_norm
+        return xywh2xyxy(boxes)
 
 
 def label_names() -> List[str]:
