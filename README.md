@@ -21,8 +21,6 @@ Then run local commands directly:
 python leap_integration.py
 ```
 
-> **Note for Tensorleap developers:** A `pyproject.toml` is also provided for Poetry-based environments. `local_requirements.txt` and `pyproject.toml` are kept in sync and cover the same dependencies. Do not use `requirements.txt` for local setup — that file is reserved for Tensorleap platform packaging via `leap.yaml`.
-
 ## Configuration
 
 All fields are set in `leap_config.yaml`.
