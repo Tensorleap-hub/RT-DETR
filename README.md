@@ -218,6 +218,12 @@ After local validation passes, push the project with the model:
 leap push -m model.onnx
 ```
 
+To push and start evaluate:
+
+```bash
+leap push -m model.onnx -n <version_name> --batch 1 --eval
+```
+
 If only code changed and the model asset is unchanged:
 
 ```bash
