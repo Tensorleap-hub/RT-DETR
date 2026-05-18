@@ -187,6 +187,29 @@ This validates dataset loading, model inference, visualizers, metrics, losses, a
 | `leap_binder/metadata.py` | Per-sample metadata (sharpness, bbox stats, class counts) |
 | `leap_binder/common.py` | Shared utilities (bbox conversion, prediction formatting) |
 
+## Secrets
+
+When S3 access is required, provide AWS credentials to the platform as a secret using the Tensorleap CLI.
+
+Create a JSON file with your credentials:
+
+```json
+{
+  "AWS_ACCESS_KEY_ID": "your-access-key-id",
+  "AWS_SECRET_ACCESS_KEY": "your-secret-access-key"
+}
+```
+
+Then set the secret on the platform:
+
+```bash
+leap secrets set <secret-name> <path-to-credentials.json>
+```
+
+The secret name can be anything (e.g. `aws-credentials`). The platform will inject the keys as environment variables at runtime, which the integration picks up automatically when `s3.enabled: true`.
+
+> **Note:** Never commit the credentials JSON file to version control. Add it to `.gitignore`.
+
 ## Pushing to Tensorleap
 
 After local validation passes, push the project with the model:
