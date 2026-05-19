@@ -81,6 +81,64 @@ s3:
 
 When `enabled: true`, annotation files and images are downloaded from S3 on demand before being read. Set `bucket_name` and `prefix` to match your bucket layout.
 
+## Downloading the dataset
+
+`scripts/download_s3_dataset.py` downloads the full dataset from S3 to the local path configured in `leap_config.yaml`. It skips files that already exist with a matching size, so re-running is safe and resumes incomplete downloads.
+
+### Setup
+
+Create a `.env` file in the repository root with your AWS credentials in the `AUTH_SECRET` format:
+
+```env
+AUTH_SECRET={"AWS_ACCESS_KEY_ID": "your-key-id", "AWS_SECRET_ACCESS_KEY": "your-secret-key"}
+```
+
+### Usage
+
+Download to the path set in `dataset_path`:
+
+```bash
+poetry run python scripts/download_s3_dataset.py
+```
+
+Download to an alternative location (useful for testing or a secondary machine):
+
+```bash
+poetry run python scripts/download_s3_dataset.py --dest /path/to/destination
+```
+
+Override the config or env file location:
+
+```bash
+poetry run python scripts/download_s3_dataset.py --config leap_config.yaml --env-file .env
+```
+
+The script prints a progress bar with bytes transferred and a `[current/total]` file count. Running it again after a complete download reports "All files up to date" immediately.
+
+### Expected structure
+
+After a successful download, `dataset_path` will contain:
+
+```text
+<dataset_path>/
+├── train/
+│   ├── annotations_train.json
+│   └── images/
+│       └── ...
+├── val/
+│   ├── annotations_val.json
+│   └── images/
+│       └── ...
+└── test/                        # if present in S3
+    ├── annotations_test.json
+    └── images/
+        └── ...
+```
+
+The layout mirrors the S3 prefix exactly. Only splits present under `s3.prefix` are downloaded.
+
+> **Note:** Never commit the `.env` file to version control.
+
 ### Detection thresholds
 
 ```yaml
