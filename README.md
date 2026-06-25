@@ -78,14 +78,14 @@ minio:
   endpoint_url: ""          # http(s)://host:port of the MinIO server
   bucket_name: ""
   prefix: ""
-  region: "us-east-1"       # arbitrary; required by the S3 client
+  region: "us-east-1"       # arbitrary; required by the client
   verify_tls: true          # true | false (self-signed) | "/path/to/ca-bundle.pem"
   addressing_style: "path"  # MinIO requires path-style addressing
 ```
 
 When `enabled: true`, annotation files and images are downloaded from MinIO on demand before being read. Set `endpoint_url`, `bucket_name`, and `prefix` to match the server and bucket layout.
 
-The MinIO server is reached over the S3 API. `endpoint_url` selects the server (the `http`/`https` scheme decides whether the connection is encrypted). `verify_tls` controls certificate validation: leave it `true` for a trusted certificate, set it to `false` for a self-signed certificate, or point it at a CA bundle path. If `endpoint_url` is left empty the client falls back to AWS S3.
+`endpoint_url` selects the MinIO server (the `http`/`https` scheme decides whether the connection is encrypted). `verify_tls` controls certificate validation: leave it `true` for a trusted certificate, set it to `false` for a self-signed certificate, or point it at a CA bundle path.
 
 ## Downloading the dataset
 
