@@ -121,6 +121,14 @@ poetry run python scripts/download_minio_dataset.py --config leap_config.yaml --
 
 The script prints a progress bar with bytes transferred and a `[current/total]` file count. Running it again after a complete download reports "All files up to date" immediately.
 
+### Verifying connectivity / debugging
+
+This script doubles as a connectivity check. On startup it prints the effective configuration (endpoint, bucket, prefix, TLS settings, destination — never the secret), and on failure it prints a clear diagnostic for the cause: unreachable endpoint, TLS/certificate error, bad credentials, missing bucket, or an empty prefix. To debug a download problem, re-run it and share the **full output** (it exits with a non-zero status on any failure):
+
+```bash
+poetry run python scripts/download_minio_dataset.py 2>&1 | tee minio_download.log
+```
+
 ### Expected structure
 
 After a successful download, `dataset_path` will contain:
