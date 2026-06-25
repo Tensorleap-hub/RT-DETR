@@ -70,27 +70,33 @@ data_yaml_path: "data/labels.yaml"
 
 The YAML file should contain a `names` or `pred_names` key with a list of class name strings. If the file is absent or neither key is present, the integration falls back to the COCO categories.
 
-### S3
+### MinIO
 
 ```yaml
-s3:
+minio:
   enabled: false
+  endpoint_url: ""          # http(s)://host:port of the MinIO server
   bucket_name: ""
   prefix: ""
+  region: "us-east-1"       # arbitrary; required by the client
+  verify_tls: true          # true | false (self-signed) | "/path/to/ca-bundle.pem"
+  addressing_style: "path"  # MinIO requires path-style addressing
 ```
 
-When `enabled: true`, annotation files and images are downloaded from S3 on demand before being read. Set `bucket_name` and `prefix` to match your bucket layout.
+When `enabled: true`, annotation files and images are downloaded from MinIO on demand before being read. Set `endpoint_url`, `bucket_name`, and `prefix` to match the server and bucket layout.
+
+`endpoint_url` selects the MinIO server (the `http`/`https` scheme decides whether the connection is encrypted). `verify_tls` controls certificate validation: leave it `true` for a trusted certificate, set it to `false` for a self-signed certificate, or point it at a CA bundle path.
 
 ## Downloading the dataset
 
-`scripts/download_s3_dataset.py` downloads the full dataset from S3 to the local path configured in `leap_config.yaml`. It skips files that already exist with a matching size, so re-running is safe and resumes incomplete downloads.
+`scripts/download_minio_dataset.py` downloads the full dataset from MinIO to the local path configured in `leap_config.yaml`. It skips files that already exist with a matching size, so re-running is safe and resumes incomplete downloads.
 
 ### Setup
 
-Create a `.env` file in the repository root with your AWS credentials in the `AUTH_SECRET` format:
+Create a `.env` file in the repository root with your MinIO credentials in the `AUTH_SECRET` format:
 
 ```env
-AUTH_SECRET={"AWS_ACCESS_KEY_ID": "your-key-id", "AWS_SECRET_ACCESS_KEY": "your-secret-key"}
+AUTH_SECRET={"access_key": "your-access-key", "secret_key": "your-secret-key"}
 ```
 
 ### Usage
@@ -98,22 +104,30 @@ AUTH_SECRET={"AWS_ACCESS_KEY_ID": "your-key-id", "AWS_SECRET_ACCESS_KEY": "your-
 Download to the path set in `dataset_path`:
 
 ```bash
-poetry run python scripts/download_s3_dataset.py
+python scripts/download_minio_dataset.py
 ```
 
 Download to an alternative location (useful for testing or a secondary machine):
 
 ```bash
-poetry run python scripts/download_s3_dataset.py --dest /path/to/destination
+python scripts/download_minio_dataset.py --dest /path/to/destination
 ```
 
 Override the config or env file location:
 
 ```bash
-poetry run python scripts/download_s3_dataset.py --config leap_config.yaml --env-file .env
+python scripts/download_minio_dataset.py --config leap_config.yaml --env-file .env
 ```
 
 The script prints a progress bar with bytes transferred and a `[current/total]` file count. Running it again after a complete download reports "All files up to date" immediately.
+
+### Verifying connectivity / debugging
+
+This script doubles as a connectivity check. On startup it prints the effective configuration (endpoint, bucket, prefix, TLS settings, destination — never the secret), and on failure it prints a clear diagnostic for the cause: unreachable endpoint, TLS/certificate error, bad credentials, missing bucket, or an empty prefix. To debug a download problem, re-run it and share the **full output** (it exits with a non-zero status on any failure):
+
+```bash
+python scripts/download_minio_dataset.py 2>&1 | tee minio_download.log
+```
 
 ### Expected structure
 
@@ -129,13 +143,13 @@ After a successful download, `dataset_path` will contain:
 │   ├── annotations_val.json
 │   └── images/
 │       └── ...
-└── test/                        # if present in S3
+└── test/                        # if present in MinIO
     ├── annotations_test.json
     └── images/
         └── ...
 ```
 
-The layout mirrors the S3 prefix exactly. Only splits present under `s3.prefix` are downloaded.
+The layout mirrors the MinIO prefix exactly. Only splits present under `minio.prefix` are downloaded.
 
 > **Note:** Never commit the `.env` file to version control.
 
@@ -247,14 +261,14 @@ This validates dataset loading, model inference, visualizers, metrics, losses, a
 
 ## Secrets
 
-When S3 access is required, provide AWS credentials to the platform as a secret using the Tensorleap CLI.
+When MinIO access is required, provide the MinIO credentials to the platform as a secret using the Tensorleap CLI.
 
 Create a JSON file with your credentials:
 
 ```json
 {
-  "AWS_ACCESS_KEY_ID": "your-access-key-id",
-  "AWS_SECRET_ACCESS_KEY": "your-secret-access-key"
+  "access_key": "your-access-key",
+  "secret_key": "your-secret-key"
 }
 ```
 
@@ -264,7 +278,7 @@ Then set the secret on the platform:
 leap secrets set <secret-name> <path-to-credentials.json>
 ```
 
-The secret name can be anything (e.g. `aws-credentials`). The platform will inject the keys as environment variables at runtime, which the integration picks up automatically when `s3.enabled: true`.
+The secret name can be anything (e.g. `minio-credentials`). The platform will inject the keys as the `AUTH_SECRET` environment variable at runtime, which the integration picks up automatically when `minio.enabled: true`.
 
 > **Note:** Never commit the credentials JSON file to version control. Add it to `.gitignore`.
 
@@ -293,7 +307,7 @@ leap push
 - **Bounding boxes look wrong in size or position** — check `gt_bbox_format` and `pred_bbox_format`. Mismatched formats are the most common cause of displaced or oversized boxes.
 - **No samples loaded** — verify `dataset_path` exists and that the annotation JSON paths under `annotation_file` resolve correctly.
 - **Empty label names** — the COCO annotation JSON must have a non-empty `categories` field, or `data_yaml_path` must point to a valid label YAML.
-- **S3 download failures** — confirm `s3.bucket_name`, `s3.prefix`, and AWS credentials are correct when `s3.enabled: true`.
+- **MinIO download failures** — confirm `minio.endpoint_url`, `minio.bucket_name`, `minio.prefix`, and the MinIO credentials are correct when `minio.enabled: true`. For TLS errors with a self-signed certificate, set `minio.verify_tls: false` or point it at a CA bundle.
 - **Platform validation fails while local passes** — re-check that `dataset_path` and `model_path` are accessible from the platform environment.
 
 ## References
