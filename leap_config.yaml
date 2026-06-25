@@ -13,10 +13,14 @@ annotation_file:
   train: "train/annotations_train.json"
   val: "val/annotations_val.json"
 
-s3:
+minio:
   enabled: true
-  bucket_name: "tensorleap-ran-dev"
-  prefix: "rheinmetall-test"
+  endpoint_url: ""
+  bucket_name: ""
+  prefix: ""
+  region: "us-east-1"
+  verify_tls: true
+  addressing_style: "path"
 
 score_threshold: 0.3
 max_detections: 300

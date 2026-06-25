@@ -6,6 +6,7 @@ from pathlib import Path
 
 import boto3
 import yaml
+from botocore.client import Config
 from dotenv import load_dotenv
 from tqdm import tqdm
 
@@ -15,16 +16,23 @@ def _load_config(config_path: str) -> dict:
         return yaml.safe_load(f)
 
 
-def _s3_client(auth_secret: str) -> boto3.client:
+def _minio_client(auth_secret: str, minio_cfg: dict) -> boto3.client:
     creds = json.loads(auth_secret)
     return boto3.client(
         "s3",
-        aws_access_key_id=creds["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=creds["AWS_SECRET_ACCESS_KEY"],
+        endpoint_url=minio_cfg.get("endpoint_url") or None,
+        aws_access_key_id=creds["access_key"],
+        aws_secret_access_key=creds["secret_key"],
+        region_name=minio_cfg.get("region", "us-east-1"),
+        verify=minio_cfg.get("verify_tls", True),
+        config=Config(
+            signature_version="s3v4",
+            s3={"addressing_style": minio_cfg.get("addressing_style", "path")},
+        ),
     )
 
 
-def _list_s3_objects(client, bucket: str, prefix: str) -> dict:
+def _list_objects(client, bucket: str, prefix: str) -> dict:
     objects = {}
     paginator = client.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
@@ -43,8 +51,8 @@ def _scan_local(dest: Path, prefix: str) -> dict:
         for fname in filenames:
             full = Path(dirpath) / fname
             rel = full.relative_to(dest)
-            s3_key = f"{prefix}/{rel}".replace("\\", "/")
-            local[s3_key] = full.stat().st_size
+            key = f"{prefix}/{rel}".replace("\\", "/")
+            local[key] = full.stat().st_size
     return local
 
 
@@ -55,9 +63,9 @@ def download(config_path: str, env_file: str, dest_override: str = None):
         sys.exit("AUTH_SECRET not set")
 
     config = _load_config(config_path)
-    s3_cfg = config.get("s3", {})
-    bucket = s3_cfg["bucket_name"]
-    prefix = s3_cfg["prefix"].rstrip("/")
+    minio_cfg = config.get("minio", {})
+    bucket = minio_cfg["bucket_name"]
+    prefix = minio_cfg["prefix"].rstrip("/")
 
     if dest_override:
         dest = Path(dest_override)
@@ -67,18 +75,18 @@ def download(config_path: str, env_file: str, dest_override: str = None):
             dataset_path = dataset_path[0]
         dest = Path(dataset_path)
 
-    client = _s3_client(auth_secret)
+    client = _minio_client(auth_secret, minio_cfg)
 
-    tqdm.write("Listing S3 objects...")
-    s3_objects = _list_s3_objects(client, bucket, prefix)
-    tqdm.write(f"Found {len(s3_objects)} objects in s3://{bucket}/{prefix}")
+    tqdm.write("Listing MinIO objects...")
+    remote_objects = _list_objects(client, bucket, prefix)
+    tqdm.write(f"Found {len(remote_objects)} objects in minio://{bucket}/{prefix}")
 
     tqdm.write(f"Scanning local files in {dest}...")
     local_index = _scan_local(dest, prefix)
 
     to_download = {
         key: size
-        for key, size in s3_objects.items()
+        for key, size in remote_objects.items()
         if key not in local_index or local_index[key] != size
     }
 
@@ -92,8 +100,8 @@ def download(config_path: str, env_file: str, dest_override: str = None):
 
     files_done = 0
     with tqdm(total=total_bytes, unit="B", unit_scale=True, desc="Progress") as bar:
-        for s3_key, size in to_download.items():
-            rel = s3_key[len(prefix) + 1:]
+        for key, size in to_download.items():
+            rel = key[len(prefix) + 1:]
             local_path = dest / rel
             local_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -103,7 +111,7 @@ def download(config_path: str, env_file: str, dest_override: str = None):
             def _callback(n, _bar=bar):
                 _bar.update(n)
 
-            client.download_file(bucket, s3_key, str(local_path), Callback=_callback)
+            client.download_file(bucket, key, str(local_path), Callback=_callback)
 
     tqdm.write("Done.")
 
