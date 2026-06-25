@@ -104,19 +104,19 @@ AUTH_SECRET={"access_key": "your-access-key", "secret_key": "your-secret-key"}
 Download to the path set in `dataset_path`:
 
 ```bash
-poetry run python scripts/download_minio_dataset.py
+python scripts/download_minio_dataset.py
 ```
 
 Download to an alternative location (useful for testing or a secondary machine):
 
 ```bash
-poetry run python scripts/download_minio_dataset.py --dest /path/to/destination
+python scripts/download_minio_dataset.py --dest /path/to/destination
 ```
 
 Override the config or env file location:
 
 ```bash
-poetry run python scripts/download_minio_dataset.py --config leap_config.yaml --env-file .env
+python scripts/download_minio_dataset.py --config leap_config.yaml --env-file .env
 ```
 
 The script prints a progress bar with bytes transferred and a `[current/total]` file count. Running it again after a complete download reports "All files up to date" immediately.
@@ -126,7 +126,7 @@ The script prints a progress bar with bytes transferred and a `[current/total]` 
 This script doubles as a connectivity check. On startup it prints the effective configuration (endpoint, bucket, prefix, TLS settings, destination — never the secret), and on failure it prints a clear diagnostic for the cause: unreachable endpoint, TLS/certificate error, bad credentials, missing bucket, or an empty prefix. To debug a download problem, re-run it and share the **full output** (it exits with a non-zero status on any failure):
 
 ```bash
-poetry run python scripts/download_minio_dataset.py 2>&1 | tee minio_download.log
+python scripts/download_minio_dataset.py 2>&1 | tee minio_download.log
 ```
 
 ### Expected structure
