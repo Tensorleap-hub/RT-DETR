@@ -8,14 +8,7 @@ from leap_utils import compute_accuracy, compute_iou, compute_precision_recall_f
 from ultralytics.utils.metrics import box_iou
 from utils.general import xywh2xyxy
 
-from .common import CONFIG, format_predictions, label_names, pred_boxes_to_norm_xyxy, prediction_rows
-
-
-def _batched_targets(targets: np.ndarray) -> np.ndarray:
-    targets = np.asarray(targets)
-    if targets.ndim == 2:
-        return targets[None, ...]
-    return targets
+from .common import CONFIG, _batched_targets, format_predictions, label_names, pred_boxes_to_norm_xyxy, prediction_rows
 
 
 def get_per_sample_metrics_from_predictions(y_preds: np.ndarray, targets: np.ndarray):

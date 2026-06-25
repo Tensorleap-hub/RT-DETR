@@ -107,3 +107,10 @@ def pred_boxes_to_norm_xyxy(boxes: np.ndarray, image_size) -> np.ndarray:
 
 def label_names() -> List[str]:
     return CONFIG.get("_label_names", [])
+
+
+def _batched_targets(targets: np.ndarray) -> np.ndarray:
+    targets = np.asarray(targets)
+    if targets.ndim == 2:
+        return targets[None, ...]
+    return targets

@@ -1,5 +1,3 @@
-import os
-
 import cv2
 import numpy as np
 
@@ -11,7 +9,7 @@ from .common import CONFIG, parse_gt_bbox
 
 def _safe_stat(values: np.ndarray, reducer) -> float:
     if len(values) == 0:
-        return float(np.nan)
+        return 0.0
     return float(reducer(values))
 
 
@@ -22,7 +20,7 @@ def sample_metadata(idx: int, preprocessing: PreprocessResponse) -> dict:
     annotations = data["anns"].get(img_meta["id"], [])
     categories = data.get("categories", {})
 
-    image_path = os.path.join(data["root"], img_meta["file_name"])
+    image_path = str(data["root"] / img_meta["file_name"])
     image = cv2.imread(image_path)
     laplacian = cv2.Laplacian(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), cv2.CV_64F)
     sharpness = laplacian.var()

@@ -8,14 +8,7 @@ from utils.general import xywh2xyxy
 
 from leap_utils import compute_iou, compute_precision_recall_f1_fp_tp_fn
 
-from .common import CONFIG, format_predictions, pred_boxes_to_norm_xyxy, prediction_rows
-
-
-def _batched_targets(targets: np.ndarray) -> np.ndarray:
-    targets = np.asarray(targets)
-    if targets.ndim == 2:
-        return targets[None, ...]
-    return targets
+from .common import CONFIG, _batched_targets, format_predictions, pred_boxes_to_norm_xyxy, prediction_rows
 
 
 def compute_detection_losses(targets: np.ndarray, *, y_preds: np.ndarray) -> Dict[str, np.ndarray]:

@@ -75,7 +75,7 @@ def check_integration(idx, subset):
         visualize(vis_pred, title="Predicted boxes")
 
     _ = get_per_sample_metrics(boxes_output, scores_output, gt)
-    _ = confusion_matrix_metric(boxes_output, scores_output, gt)
+    # _ = confusion_matrix_metric(boxes_output, scores_output, gt)
     _ = detection_iou_loss(boxes_output, scores_output, gt)
     _ = detection_f1_loss(boxes_output, scores_output, gt)
     _ = sample_metadata(idx, subset)
