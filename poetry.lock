@@ -200,13 +200,13 @@ files = [
 
 [[package]]
 name = "code-loader"
-version = "1.0.171"
+version = "1.0.189"
 description = ""
 optional = false
 python-versions = "<3.13,>=3.8"
 files = [
-    {file = "code_loader-1.0.171-py3-none-any.whl", hash = "sha256:9c13aa3256beebe66a1f78ced9d5d3ba1e7180e308e7d80154f7c9e0e5899064"},
-    {file = "code_loader-1.0.171.tar.gz", hash = "sha256:ecbfe5d5da100e21c7594e321659c20c7ea285962d82f7fb1a086f0d13a2086b"},
+    {file = "code_loader-1.0.189-py3-none-any.whl", hash = "sha256:6fa94ef8b9da9e615fc33757c76869bc1a4a75da4674aa9b8c86b36a0d94ac4c"},
+    {file = "code_loader-1.0.189.tar.gz", hash = "sha256:f10ac162ec75d212f06f7732bac79fb989fa52614975999fbca35314ff6ea91f"},
 ]
 
 [package.dependencies]
@@ -2540,4 +2540,4 @@ watchdog = ["watchdog (>=2.3)"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "b346744fd4399db8604882cfc22efe6d0304546e4ac7ba7b74cf0c819d77232f"
+content-hash = "c3d903b2dbb9d4b34c2b81a77367eff8e0d23238cd54eb4647881ee9d171fdbb"
