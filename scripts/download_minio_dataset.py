@@ -83,6 +83,7 @@ def _make_client(creds: dict, minio_cfg: dict) -> boto3.client:
         config=Config(
             signature_version="s3v4",
             s3={"addressing_style": minio_cfg.get("addressing_style", "path")},
+            proxies=minio_cfg.get("proxies", {}),
             connect_timeout=15,
             retries={"max_attempts": 2},
         ),
