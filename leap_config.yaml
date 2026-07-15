@@ -22,6 +22,19 @@ minio:
   verify_tls: true
   addressing_style: "path"
 
+# Only used by scripts/download_lakefs_dataset.py — the integration ignores this section.
+# Credentials come from LAKEFS_SECRET in the .env file (same JSON format as AUTH_SECRET).
+lakefs:
+  enabled: false
+  endpoint_url: ""      # lakeFS S3 gateway URL
+  repository: ""        # lakeFS repository (used as the S3 bucket)
+  branch: ""            # branch/ref, e.g. main
+  prefix: ""            # path within the branch, e.g. missionpod_ukraine
+  region: "us-east-1"
+  verify_tls: true
+  addressing_style: "path"
+  dataset_path: ""      # optional; defaults to <dataset_path>-lakefs
+
 score_threshold: 0.3
 max_detections: 300
 
