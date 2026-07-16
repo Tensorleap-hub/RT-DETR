@@ -6,7 +6,7 @@ readme = "README.md"
 package-mode = false
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.11"
+python = ">=3.10,<3.13"
 code-loader = "1.0.171"
 matplotlib = ">=3.3.0"
 numpy = ">=1.22.2"
@@ -15,8 +15,8 @@ pillow = ">=7.1.2"
 pyyaml = ">=5.3.1"
 requests = ">=2.23.0"
 scipy = ">=1.4.1"
-torch = "2.0.1"
-torchvision = "0.15.2"
+torch = "2.5.1"
+torchvision = "0.20.1"
 tqdm = ">=4.64.0"
 psutil = "5.9.8"
 py-cpuinfo = "*"
@@ -33,6 +33,7 @@ tensorboard = "^2.20.0"
 faster-coco-eval = "^1.7.2"
 boto3 = "^1.42.91"
 python-dotenv = "^1.2.2"
+loguru = "^0.7.0"
 
 [tool.poetry.group.dev.dependencies]
 h5py = "^3.16.0"

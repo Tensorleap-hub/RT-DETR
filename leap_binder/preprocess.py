@@ -1,4 +1,5 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, List
 
@@ -13,7 +14,7 @@ from code_loader.inner_leap_binder.leapbinder_decorators import (
 )
 from leap_config import _dataset_root, resolve_coco_paths
 
-from .minio_utils import download_annotations, download_file_if_missing
+from .minio_utils import download_annotations, download_file_if_missing, object_exists
 from .common import CONFIG, parse_gt_bbox
 
 
@@ -37,6 +38,57 @@ _SPLIT_TO_STATE = {
 }
 
 
+def _minio_key_for(image_path: str, minio_config: Dict) -> str:
+    relative = Path(image_path).relative_to(_dataset_root(CONFIG))
+    return f"{minio_config['prefix']}/{relative}"
+
+
+def load_raw_image(idx: int, preprocess: PreprocessResponse) -> np.ndarray:
+    data = preprocess.data
+    img_meta = data["images"][idx]
+    image_path = str(data["root"] / img_meta["file_name"])
+
+    minio_config = CONFIG.get("minio", {})
+    if minio_config.get("enabled"):
+        download_file_if_missing(
+            minio_config["bucket_name"], _minio_key_for(image_path, minio_config), image_path
+        )
+
+    img = cv2.imread(image_path)
+    if img is None:
+        raise FileNotFoundError(f"Could not read image: {image_path}")
+    return img
+
+
+def _image_available(image_path: str, minio_config: Dict) -> bool:
+    if Path(image_path).exists():
+        return True
+    if minio_config.get("enabled"):
+        return object_exists(minio_config["bucket_name"], _minio_key_for(image_path, minio_config))
+    return False
+
+
+def _filter_paired_samples(data: Dict, split: str) -> Dict:
+    minio_config = CONFIG.get("minio", {})
+    with_anns = [img for img in data["images"] if data["anns"].get(img["id"])]
+    no_annotations = len(data["images"]) - len(with_anns)
+
+    image_paths = [str(data["root"] / img["file_name"]) for img in with_anns]
+    workers = int(minio_config.get("head_check_workers", 32))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        available = list(pool.map(lambda path: _image_available(path, minio_config), image_paths))
+    kept = [img for img, ok in zip(with_anns, available) if ok]
+    no_image = len(with_anns) - len(kept)
+
+    if no_annotations or no_image:
+        print(
+            f"[{split}] skipping {no_image} sample(s) with a missing image file and "
+            f"{no_annotations} without annotations; {len(kept)}/{len(data['images'])} remain"
+        )
+    data["images"] = kept
+    return data
+
+
 @tensorleap_preprocess()
 def preprocess_func_leap() -> List[PreprocessResponse]:
     minio_config = CONFIG.get("minio", {})
@@ -52,7 +104,10 @@ def preprocess_func_leap() -> List[PreprocessResponse]:
     for split in ["train", "val", "test"]:
         if split not in annotation_paths:
             continue
-        data = _load_coco(annotation_paths[split], split_roots[split])
+        data = _filter_paired_samples(_load_coco(annotation_paths[split], split_roots[split]), split)
+        if not data["images"]:
+            print(f"[{split}] no samples with both an image and annotations, skipping split")
+            continue
         responses.append(PreprocessResponse(data=data, length=len(data["images"]), state=_SPLIT_TO_STATE[split]))
     if not responses:
         raise ValueError("No COCO annotation files found for any split")
@@ -61,18 +116,8 @@ def preprocess_func_leap() -> List[PreprocessResponse]:
 
 @tensorleap_input_encoder("image", channel_dim=1)
 def input_encoder(idx: int, preprocess: PreprocessResponse) -> np.ndarray:
-    data = preprocess.data
-    img_meta = data["images"][idx]
-    image_path = str(data["root"] / img_meta["file_name"])
-
-    minio_config = CONFIG.get("minio", {})
-    if minio_config.get("enabled"):
-        relative = Path(image_path).relative_to(_dataset_root(CONFIG))
-        key = f"{minio_config['prefix']}/{relative}"
-        download_file_if_missing(minio_config["bucket_name"], key, image_path)
-
     image_size = CONFIG["image_size"]
-    img = cv2.imread(image_path)
+    img = load_raw_image(idx, preprocess)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     img = cv2.resize(img, (image_size[1], image_size[0]))
     img = img.astype(np.float32) / 255.0

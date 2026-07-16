@@ -4,8 +4,8 @@ pillow
 pyyaml
 requests
 scipy
-torch==2.1.2
-torchvision==0.16.2
+torch==2.5.1
+torchvision==0.20.1
 tqdm
 psutil
 py-cpuinfo
@@ -14,6 +14,6 @@ pandas
 seaborn
 onnxruntime
 opencv-python==4.11.0.86
-typing-extensions==4.6.0
+typing-extensions>=4.12.0
 ultralytics==8.1.47
 boto3
