@@ -6,7 +6,7 @@ All configuration lives in `leap_config.yaml`.
 
 ## Prerequisites
 
-- Python `>=3.9,<3.11`
+- Python `>=3.10,<3.13`
 - Tensorleap CLI installed and authenticated if you plan to push to the platform
 
 ## Installation
