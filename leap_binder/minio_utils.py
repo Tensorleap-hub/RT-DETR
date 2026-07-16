@@ -3,11 +3,23 @@ import os
 
 import boto3
 from botocore.client import Config
+from botocore.exceptions import ClientError
 
 from .common import CONFIG
 
+_NOT_FOUND_CODES = {"404", "NoSuchKey", "NotFound"}
+
+_client = None
+
 
 def _minio_client() -> boto3.client:
+    global _client
+    if _client is None:
+        _client = _build_minio_client()
+    return _client
+
+
+def _build_minio_client() -> boto3.client:
     auth_secret_string = os.getenv("AUTH_SECRET")
     if auth_secret_string is None:
         raise ValueError("AUTH_SECRET environment variable not set")
@@ -36,6 +48,17 @@ def _minio_client() -> boto3.client:
     )
 
 
+def object_exists(bucket: str, key: str) -> bool:
+    client = _minio_client()
+    try:
+        client.head_object(Bucket=bucket, Key=key)
+        return True
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") in _NOT_FOUND_CODES:
+            return False
+        raise
+
+
 def download_file_if_missing(bucket: str, key: str, local_path: str) -> str:
     if os.path.exists(local_path):
         return local_path
@@ -56,4 +79,10 @@ def download_annotations(bucket: str, prefix: str, annotation_files: dict, datas
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
         if client is None:
             client = _minio_client()
-        client.download_file(bucket, key, local_path)
+        try:
+            client.download_file(bucket, key, local_path)
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") in _NOT_FOUND_CODES:
+                print(f"Annotation file not found in storage, skipping: {key}")
+                continue
+            raise

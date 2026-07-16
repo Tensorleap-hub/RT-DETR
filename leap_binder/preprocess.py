@@ -13,7 +13,7 @@ from code_loader.inner_leap_binder.leapbinder_decorators import (
 )
 from leap_config import _dataset_root, resolve_coco_paths
 
-from .minio_utils import download_annotations, download_file_if_missing
+from .minio_utils import download_annotations, download_file_if_missing, object_exists
 from .common import CONFIG, parse_gt_bbox
 
 
@@ -37,6 +37,41 @@ _SPLIT_TO_STATE = {
 }
 
 
+def _minio_key_for(image_path: str, minio_config: Dict) -> str:
+    relative = Path(image_path).relative_to(_dataset_root(CONFIG))
+    return f"{minio_config['prefix']}/{relative}"
+
+
+def _image_available(image_path: str, minio_config: Dict) -> bool:
+    if Path(image_path).exists():
+        return True
+    if minio_config.get("enabled"):
+        return object_exists(minio_config["bucket_name"], _minio_key_for(image_path, minio_config))
+    return False
+
+
+def _filter_paired_samples(data: Dict, split: str) -> Dict:
+    minio_config = CONFIG.get("minio", {})
+    kept = []
+    no_annotations = 0
+    no_image = 0
+    for img in data["images"]:
+        if not data["anns"].get(img["id"]):
+            no_annotations += 1
+            continue
+        if not _image_available(str(data["root"] / img["file_name"]), minio_config):
+            no_image += 1
+            continue
+        kept.append(img)
+    if no_annotations or no_image:
+        print(
+            f"[{split}] skipping {no_image} sample(s) with a missing image file and "
+            f"{no_annotations} without annotations; {len(kept)}/{len(data['images'])} remain"
+        )
+    data["images"] = kept
+    return data
+
+
 @tensorleap_preprocess()
 def preprocess_func_leap() -> List[PreprocessResponse]:
     minio_config = CONFIG.get("minio", {})
@@ -52,7 +87,10 @@ def preprocess_func_leap() -> List[PreprocessResponse]:
     for split in ["train", "val", "test"]:
         if split not in annotation_paths:
             continue
-        data = _load_coco(annotation_paths[split], split_roots[split])
+        data = _filter_paired_samples(_load_coco(annotation_paths[split], split_roots[split]), split)
+        if not data["images"]:
+            print(f"[{split}] no samples with both an image and annotations, skipping split")
+            continue
         responses.append(PreprocessResponse(data=data, length=len(data["images"]), state=_SPLIT_TO_STATE[split]))
     if not responses:
         raise ValueError("No COCO annotation files found for any split")
@@ -67,8 +105,7 @@ def input_encoder(idx: int, preprocess: PreprocessResponse) -> np.ndarray:
 
     minio_config = CONFIG.get("minio", {})
     if minio_config.get("enabled"):
-        relative = Path(image_path).relative_to(_dataset_root(CONFIG))
-        key = f"{minio_config['prefix']}/{relative}"
+        key = _minio_key_for(image_path, minio_config)
         download_file_if_missing(minio_config["bucket_name"], key, image_path)
 
     image_size = CONFIG["image_size"]
