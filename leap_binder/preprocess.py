@@ -43,6 +43,23 @@ def _minio_key_for(image_path: str, minio_config: Dict) -> str:
     return f"{minio_config['prefix']}/{relative}"
 
 
+def load_raw_image(idx: int, preprocess: PreprocessResponse) -> np.ndarray:
+    data = preprocess.data
+    img_meta = data["images"][idx]
+    image_path = str(data["root"] / img_meta["file_name"])
+
+    minio_config = CONFIG.get("minio", {})
+    if minio_config.get("enabled"):
+        download_file_if_missing(
+            minio_config["bucket_name"], _minio_key_for(image_path, minio_config), image_path
+        )
+
+    img = cv2.imread(image_path)
+    if img is None:
+        raise FileNotFoundError(f"Could not read image: {image_path}")
+    return img
+
+
 def _image_available(image_path: str, minio_config: Dict) -> bool:
     if Path(image_path).exists():
         return True
@@ -99,17 +116,8 @@ def preprocess_func_leap() -> List[PreprocessResponse]:
 
 @tensorleap_input_encoder("image", channel_dim=1)
 def input_encoder(idx: int, preprocess: PreprocessResponse) -> np.ndarray:
-    data = preprocess.data
-    img_meta = data["images"][idx]
-    image_path = str(data["root"] / img_meta["file_name"])
-
-    minio_config = CONFIG.get("minio", {})
-    if minio_config.get("enabled"):
-        key = _minio_key_for(image_path, minio_config)
-        download_file_if_missing(minio_config["bucket_name"], key, image_path)
-
     image_size = CONFIG["image_size"]
-    img = cv2.imread(image_path)
+    img = load_raw_image(idx, preprocess)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     img = cv2.resize(img, (image_size[1], image_size[0]))
     img = img.astype(np.float32) / 255.0
