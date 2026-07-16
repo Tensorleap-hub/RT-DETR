@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 
 import boto3
 from botocore.client import Config
@@ -10,12 +11,16 @@ from .common import CONFIG
 _NOT_FOUND_CODES = {"404", "NoSuchKey", "NotFound"}
 
 _client = None
+_client_lock = threading.Lock()
 
 
 def _minio_client() -> boto3.client:
+    # Client creation is not thread-safe, but using the built client is.
     global _client
     if _client is None:
-        _client = _build_minio_client()
+        with _client_lock:
+            if _client is None:
+                _client = _build_minio_client()
     return _client
 
 

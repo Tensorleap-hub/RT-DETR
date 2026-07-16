@@ -1,4 +1,5 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, List
 
@@ -52,17 +53,16 @@ def _image_available(image_path: str, minio_config: Dict) -> bool:
 
 def _filter_paired_samples(data: Dict, split: str) -> Dict:
     minio_config = CONFIG.get("minio", {})
-    kept = []
-    no_annotations = 0
-    no_image = 0
-    for img in data["images"]:
-        if not data["anns"].get(img["id"]):
-            no_annotations += 1
-            continue
-        if not _image_available(str(data["root"] / img["file_name"]), minio_config):
-            no_image += 1
-            continue
-        kept.append(img)
+    with_anns = [img for img in data["images"] if data["anns"].get(img["id"])]
+    no_annotations = len(data["images"]) - len(with_anns)
+
+    image_paths = [str(data["root"] / img["file_name"]) for img in with_anns]
+    workers = int(minio_config.get("head_check_workers", 32))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        available = list(pool.map(lambda path: _image_available(path, minio_config), image_paths))
+    kept = [img for img, ok in zip(with_anns, available) if ok]
+    no_image = len(with_anns) - len(kept)
+
     if no_annotations or no_image:
         print(
             f"[{split}] skipping {no_image} sample(s) with a missing image file and "
