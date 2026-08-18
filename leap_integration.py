@@ -1,7 +1,35 @@
+import argparse
+import os
+
+os.environ['TL_DISABLE_ANALYTICS'] = 'true'
+
+
+def _parse_cli_args():
+    parser = argparse.ArgumentParser(
+        description="Run the RT-DETR Tensorleap integration test locally."
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Path to the project config YAML (default: leap_config.yaml)",
+    )
+    parser.add_argument(
+        "--env-file",
+        default=None,
+        help="Path to the env file holding AUTH_SECRET (default: .env)",
+    )
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    _cli_args = _parse_cli_args()
+    if _cli_args.config:
+        os.environ["LEAP_CONFIG_PATH"] = _cli_args.config
+    if _cli_args.env_file:
+        os.environ["LEAP_ENV_FILE"] = _cli_args.env_file
+
 import onnxruntime as ort
 import numpy as np
-import os
-os.environ['TL_DISABLE_ANALYTICS'] = 'true'
 from code_loader.contract.datasetclasses import PredictionTypeHandler
 from code_loader.plot_functions.visualize import visualize
 from code_loader.inner_leap_binder.leapbinder_decorators import (

@@ -3,6 +3,7 @@ import ntpath
 import os
 import posixpath
 import yaml
+from dotenv import load_dotenv
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -90,9 +91,15 @@ def load_label_names(config: Dict[str, Any]) -> List[str]:
     return []
 
 
+def load_env_file() -> None:
+    env_file = os.environ.get("LEAP_ENV_FILE", ".env")
+    load_dotenv(abs_path_from_root(env_file))
+
+
 def load_project_config() -> Dict[str, Any]:
-    return _load_yaml("leap_config.yaml")
+    return _load_yaml(os.environ.get("LEAP_CONFIG_PATH", "leap_config.yaml"))
 
 
+load_env_file()
 CONFIG = load_project_config()
 CONFIG["_label_names"] = load_label_names(CONFIG)
