@@ -245,6 +245,12 @@ python leap_integration.py
 
 This validates dataset loading, model inference, visualizers, metrics, losses, and metadata for a single sample.
 
+By default it reads `leap_config.yaml` and, when present, a `.env` file in the repository root (the `AUTH_SECRET` it holds is required when `minio.enabled` is `true`). Override either location:
+
+```bash
+python leap_integration.py --config leap_config.yaml --env-file .env
+```
+
 ## Project structure
 
 | Path | Purpose |

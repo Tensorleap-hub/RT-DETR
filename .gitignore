@@ -258,3 +258,4 @@ docs/
 
 # Large model files
 *.onnx
+*.h5
