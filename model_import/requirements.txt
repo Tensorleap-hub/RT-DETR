@@ -1,0 +1,5 @@
+onnx2kerastl==0.0.195
+onnx==1.13.0
+onnxruntime==1.17.3
+numpy==1.23.5
+protobuf>=3.20.3,<4
