@@ -29,7 +29,7 @@ Environment constraints, matching the Tensorleap import environment:
 |---|---|
 | Python | 3.8, 3.9 or 3.10 (3.11 and newer are not supported by the pinned packages) |
 | Platform | x86_64 Linux or Windows, or Apple silicon macOS |
-| Pins | `onnx2kerastl==0.0.195`, `onnx==1.13.0`, `onnxruntime==1.17.3`, TensorFlow 2.12 (pulled in automatically) |
+| Pins | `onnx2kerastl==0.0.195`, `onnx==1.13.0`, `onnxruntime==1.17.3`, TensorFlow 2.12 (see `requirements.txt`) |
 | Venv | Separate from the integration environment. The pins conflict with `local_requirements.txt` (onnx 1.17, tensorboard 2.20). |
 
 Install (TensorFlow is a large download):
@@ -38,7 +38,10 @@ Install (TensorFlow is a large download):
 python3.10 -m venv tl-import-check
 source tl-import-check/bin/activate        # Windows: tl-import-check\Scripts\activate
 pip install -r model_import/requirements.txt
+pip install --no-deps onnx2kerastl==0.0.195
 ```
+
+`onnx2kerastl` is installed as a second step with `--no-deps`. `requirements.txt` already contains everything it needs at runtime, with per-platform pins (Windows gets `tensorflow-io-gcs-filesystem` 0.31.0, the last version with a Windows wheel). If the install fails on Windows for another reason, WSL2 with the same commands is the fallback.
 
 Run on the exact file you intend to upload:
 

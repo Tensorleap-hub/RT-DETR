@@ -7,7 +7,7 @@ import sys
 import time
 import traceback
 
-INSTALL_HINT = "python3.10 venv, then: pip install -r model_import/requirements.txt"
+INSTALL_HINT = "python3.10 venv, then: pip install -r model_import/requirements.txt && pip install --no-deps onnx2kerastl==0.0.195"
 EXPECTED_IR = 8
 EXPECTED_OPSET = 16
 EMPTY_INPUT_OK = ("Pad", "Resize", "Clip", "LSTM", "GRU")
@@ -39,6 +39,22 @@ def report_environment():
     print(f"python {sys.version.split()[0]}  {platform.platform()}")
     for p in ("tensorflow", "tensorflow-macos", "onnx", "onnxruntime", "onnx2kerastl", "keras-data-format-converter", "numpy", "protobuf"):
         print(f"{p:<30} {pkg_version(p)}")
+
+
+def check_dependencies():
+    missing = []
+    for mod, pkg in (("tensorflow", "tensorflow"), ("onnx", "onnx"), ("onnxruntime", "onnxruntime"), ("onnx2kerastl", "onnx2kerastl"), ("keras_data_format_converter", "keras-data-format-converter")):
+        try:
+            __import__(mod)
+        except Exception as e:
+            missing.append(f"{pkg} ({type(e).__name__}: {str(e)[:120]})")
+    if missing:
+        section("RESULT")
+        print("NOT RUN: this Python environment is missing packages the check needs:")
+        for m in missing:
+            print(f"  - {m}")
+        print(f"\nActivate the venv created for this check, or set it up again: {INSTALL_HINT}")
+        sys.exit(4)
 
 
 def dims_of(vi):
@@ -369,6 +385,7 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     stem = os.path.splitext(os.path.basename(path))[0]
     report_environment()
+    check_dependencies()
     m = load_model(path)
     check_format(m, args.force)
     producer, inits = precheck(m, args.force)
