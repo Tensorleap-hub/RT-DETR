@@ -7,7 +7,7 @@ import sys
 import time
 import traceback
 
-INSTALL_HINT = "python3.10 venv, then: pip install -r model_import/requirements.txt && pip install --no-deps onnx2kerastl==0.0.195"
+INSTALL_HINT = "python3.10 venv, then: pip install -r model_import/requirements.txt && pip install --no-deps onnx2kerastl==0.0.198 keras-data-format-converter==0.1.24"
 EXPECTED_IR = 8
 EXPECTED_OPSET = 16
 EMPTY_INPUT_OK = ("Pad", "Resize", "Clip", "LSTM", "GRU")
@@ -140,6 +140,11 @@ def precheck(m, force):
             print(f"  node[{idx}] {op} '{name}' input#{k} = {inp!r} is not defined")
     else:
         print("all node inputs are defined before use: OK")
+    missing_out = [o.name for o in g.output if o.name not in seen]
+    if missing_out:
+        blocking.append(f"graph output(s) {missing_out} are not produced by any node. The converted model would come out without them, and the import maps predictions by output index.")
+    else:
+        print(f"all {len(g.output)} graph outputs are produced: OK")
 
     def resolved_name(t):
         fl = t.ListFields()
@@ -246,6 +251,51 @@ def failure_reason(e, node, m, producer, inits):
     return f"{name}: {first[:400]}"
 
 
+def check_output_count(k_model, m, stage):
+    expected = [o.name for o in m.graph.output]
+    if len(k_model.outputs) != len(expected):
+        print(f"FAILED: after {stage} the model has {len(k_model.outputs)} output(s) but the ONNX file declares {len(expected)} {expected}. The Tensorleap import maps predictions by output index and stops here.")
+        return False
+    print(f"outputs after {stage}: {len(k_model.outputs)} (matches the ONNX file)")
+    return True
+
+
+def check_tensor_names(k_model):
+    section("Tensor naming (Tensorleap graph wiring)")
+    collisions = []
+    checked = 0
+    for layer in k_model.layers:
+        for node in getattr(layer, "inbound_nodes", []):
+            tensors = getattr(node, "keras_inputs", None)
+            if tensors is None:
+                try:
+                    tensors = node.input_tensors
+                except Exception:
+                    continue
+            tensors = tensors if isinstance(tensors, (list, tuple)) else [tensors]
+            by_name = {}
+            for t in tensors:
+                try:
+                    name = t.name
+                except Exception:
+                    continue
+                hist = getattr(t, "_keras_history", None)
+                ident = (hist.layer.name, hist.node_index, hist.tensor_index) if hist is not None else id(t)
+                by_name.setdefault(name, set()).add(ident)
+            checked += 1
+            for name, idents in by_name.items():
+                if len(idents) > 1:
+                    collisions.append((layer.name, name, len(idents)))
+    if not collisions:
+        print(f"no layer receives two different tensors under one name ({checked} layer inputs checked): OK")
+        return True
+    print("FAILED: some layers receive two different tensors that carry the same name. The Tensorleap graph build wires layer arguments by tensor name, so one tensor would be fed into both slots. Locally the Keras model still runs; on the server this surfaces at the first inference (for example GatherNd 'does not index into param shape').")
+    for layer_name, name, n in collisions[:10]:
+        print(f"  layer '{layer_name}': {n} different tensors named {name!r}")
+    print(f"  This is a converter-side issue, not a model issue. onnx2kerastl installed here: {pkg_version('onnx2kerastl')}. The known case (GatherElements) is fixed in 0.0.198, which Tensorleap servers 1.6.68 and newer run. If you already have 0.0.198, send us this output.")
+    return False
+
+
 def convert_with_tensorleap_flow(m, producer, inits, out_dir, stem, transform_io):
     from onnx2kerastl import onnx_to_keras
     section("Tensorleap conversion")
@@ -262,7 +312,7 @@ def convert_with_tensorleap_flow(m, producer, inits, out_dir, stem, transform_io
             if record.levelno >= logging.WARNING:
                 warnings[f"{record.name}: {record.getMessage()}"] += 1
     debug_path = os.path.join(out_dir, f"{stem}.onnx2keras_debug.log")
-    fh = logging.FileHandler(debug_path, mode="w")
+    fh = logging.FileHandler(debug_path, mode="w", encoding="utf-8")
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     lg.addHandler(Ring())
@@ -282,7 +332,7 @@ def convert_with_tensorleap_flow(m, producer, inits, out_dir, stem, transform_io
         resp = onnx_to_keras(m, input_names=input_names, name_policy="attach_weights_name", allow_partial_compilation=False)
     except Exception as e:
         fh.flush()
-        with open(debug_path, "a") as f:
+        with open(debug_path, "a", encoding="utf-8") as f:
             f.write("\n===== conversion failed, traceback =====\n")
             f.write(traceback.format_exc())
         node_name = next((l.split("node_name: ", 1)[1] for l in reversed(ring) if l.startswith("onnx2keras: node_name: ")), None)
@@ -311,6 +361,8 @@ def convert_with_tensorleap_flow(m, producer, inits, out_dir, stem, transform_io
     if getattr(resp, "error_info", None):
         print(f"partial-compilation info: {resp.error_info}")
     k_model = resp.converted_model
+    if not check_output_count(k_model, m, "conversion"):
+        return None
     section("Channels-last conversion")
     try:
         from keras_data_format_converter import convert_channels_first_to_last
@@ -321,12 +373,16 @@ def convert_with_tensorleap_flow(m, producer, inits, out_dir, stem, transform_io
         t0 = time.time()
         k_model = convert_channels_first_to_last(k_model, transform_io, onnx_custom_layers)
         print(f"OK in {time.time() - t0:.1f}s")
+        if not check_output_count(k_model, m, "channels-last conversion"):
+            return None
     except Exception as e:
-        with open(debug_path, "a") as f:
+        with open(debug_path, "a", encoding="utf-8") as f:
             f.write("\n===== channels-last conversion failed, traceback =====\n")
             f.write(traceback.format_exc())
         print(f"FAILED: {type(e).__name__}: {str(e)[:400]}")
         print(f"Details are in: {debug_path}")
+        return None
+    if not check_tensor_names(k_model):
         return None
     section("Save and reload .h5")
     h5_path = os.path.join(out_dir, f"{stem}.tensorleap.h5")
@@ -336,7 +392,7 @@ def convert_with_tensorleap_flow(m, producer, inits, out_dir, stem, transform_io
         k_model = tf.keras.models.load_model(h5_path, custom_objects=onnx_custom_layers, compile=False)
         print(f"OK: {h5_path}")
     except Exception as e:
-        with open(debug_path, "a") as f:
+        with open(debug_path, "a", encoding="utf-8") as f:
             f.write("\n===== h5 save/reload failed, traceback =====\n")
             f.write(traceback.format_exc())
         print(f"FAILED: {type(e).__name__}: {str(e)[:400]}")
@@ -378,6 +434,11 @@ def main():
     ap.add_argument("--force", action="store_true", help="run the conversion even if the format check or pre-check reports problems")
     ap.add_argument("--transform-io", action="store_true", help="mirror the 'transform inputs' import option")
     args = ap.parse_args()
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
     logging.basicConfig(level=logging.WARNING)
     os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
     path = os.path.abspath(args.onnx_path)

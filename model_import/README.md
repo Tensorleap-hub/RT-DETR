@@ -29,7 +29,7 @@ Environment constraints, matching the Tensorleap import environment:
 |---|---|
 | Python | 3.8, 3.9 or 3.10 (3.11 and newer are not supported by the pinned packages) |
 | Platform | x86_64 Linux or Windows, or Apple silicon macOS |
-| Pins | `onnx2kerastl==0.0.195`, `onnx==1.13.0`, `onnxruntime==1.17.3`, TensorFlow 2.12 (see `requirements.txt`) |
+| Pins | `onnx2kerastl==0.0.198`, `onnx==1.13.0`, `onnxruntime==1.17.3`, TensorFlow 2.12 (see `requirements.txt`). Matches Tensorleap server releases 1.6.68 and newer. |
 | Venv | Separate from the integration environment. The pins conflict with `local_requirements.txt` (onnx 1.17, tensorboard 2.20). |
 
 Install (TensorFlow is a large download):
@@ -38,10 +38,10 @@ Install (TensorFlow is a large download):
 python3.10 -m venv tl-import-check
 source tl-import-check/bin/activate        # Windows: tl-import-check\Scripts\activate
 pip install -r model_import/requirements.txt
-pip install --no-deps onnx2kerastl==0.0.195
+pip install --no-deps onnx2kerastl==0.0.198 keras-data-format-converter==0.1.24
 ```
 
-`onnx2kerastl` is installed as a second step with `--no-deps`. `requirements.txt` already contains everything it needs at runtime, with per-platform pins (Windows gets `tensorflow-io-gcs-filesystem` 0.31.0, the last version with a Windows wheel). If the install fails on Windows for another reason, WSL2 with the same commands is the fallback.
+`onnx2kerastl` and `keras-data-format-converter` are installed as a second step with `--no-deps`. `requirements.txt` already contains everything they need at runtime, with per-platform pins (Windows gets `tensorflow-io-gcs-filesystem` 0.31.0, the last version with a Windows wheel). If the install fails on Windows for another reason, WSL2 with the same commands is the fallback.
 
 Run on the exact file you intend to upload:
 
@@ -64,11 +64,14 @@ The script runs in order: export format, graph pre-check, onnxruntime, conversio
 |---|---|
 | Export format | IR version 8, opset 16 is the format Tensorleap imports. Anything else is sent back to section 1 before conversion is attempted. |
 | `onnx.load_model` | The exact call the server uses. Catches a missing `.onnx.data` file or a corrupt file before anything else. |
-| Inputs defined before use | Every node input must be a graph input, an initializer or the output of an earlier node. This is the rule that failed on the server; the script names the node. |
+| Inputs defined before use | Every node input must be a graph input, an initializer or the output of an earlier node. The script names the offending node. |
+| Graph outputs produced | Every declared output must be produced by a node. The import maps predictions by output index, so a missing output breaks the mapping. |
 | Initializer names | Every weight tensor in the file must resolve by name. |
 | Unsupported ops, opset-18 `Split` | Operators outside the supported set are listed up front instead of failing halfway. |
 | onnxruntime load and run | Confirms the file itself is valid and runnable, with the onnxruntime version used on the server. |
-| Conversion | The step that failed on the server, run with the server's exact settings. On failure the console shows one line with the cause, the node being converted and each of its inputs with its origin. The converter trace and traceback go to the debug log only. |
+| Conversion | Run with the server's exact settings. On failure the console shows one line with the cause, the node being converted and each of its inputs with its origin. The converter trace and traceback go to the debug log only. |
+| Output count | After conversion and again after the channels-last step, the model must expose the same number of outputs as the ONNX file. |
+| Tensor naming | Within each layer, distinct input tensors must have distinct names, because the Tensorleap graph build wires layer arguments by tensor name. A collision passes locally in Keras and fails on the server at the first inference. |
 | Channels-last conversion, `.h5` save and reload | The remaining server-side steps of the import. |
 | Keras vs onnxruntime outputs | Numerical sanity check of the converted model. |
 
