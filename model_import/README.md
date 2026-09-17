@@ -43,6 +43,8 @@ pip install --no-deps onnx2kerastl==0.0.198 keras-data-format-converter==0.1.24
 
 `onnx2kerastl` and `keras-data-format-converter` are installed as a second step with `--no-deps`. `requirements.txt` already contains everything they need at runtime. If the install fails on Windows for another reason, WSL2 with the same commands is the fallback.
 
+The same two install commands and a smoke run of the script execute in CI on Windows and Linux for every change to this folder (`.github/workflows/model-import-check.yml`).
+
 Run on the exact file you intend to upload:
 
 ```bash
