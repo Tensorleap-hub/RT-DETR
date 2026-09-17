@@ -41,7 +41,7 @@ pip install -r model_import/requirements.txt
 pip install --no-deps onnx2kerastl==0.0.198 keras-data-format-converter==0.1.24
 ```
 
-`onnx2kerastl` and `keras-data-format-converter` are installed as a second step with `--no-deps`. `requirements.txt` already contains everything they need at runtime, with per-platform pins (Windows gets `tensorflow-io-gcs-filesystem` 0.31.0, the last version with a Windows wheel). If the install fails on Windows for another reason, WSL2 with the same commands is the fallback.
+`onnx2kerastl` and `keras-data-format-converter` are installed as a second step with `--no-deps`. `requirements.txt` already contains everything they need at runtime. If the install fails on Windows for another reason, WSL2 with the same commands is the fallback.
 
 Run on the exact file you intend to upload:
 
